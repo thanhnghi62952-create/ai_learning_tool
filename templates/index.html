@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Learning Tool</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #38bdf8;
+        }
+
+        .input-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
+        }
+
+        button {
+            padding: 12px 20px;
+            border-radius: 10px;
+            border: none;
+            background: #38bdf8;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+        }
+
+        img {
+            max-width: 100%;
+            border-radius: 12px;
+        }
+
+        .title {
+            color: #38bdf8;
+            margin-bottom: 10px;
+        }
+
+        .quiz {
+            background: #334155;
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <h1>📚 AI Learning Tool</h1>
+
+    <form method="post">
+        <div class="input-box">
+            <input name="concept" placeholder="Nhập khái niệm..." required>
+            <button type="submit">Học</button>
+        </div>
+    </form>
+
+    {% if explanation %}
+        <div class="card">
+            <div class="title">🧠 Giải thích</div>
+            <p>{{ explanation }}</p>
+        </div>
+
+        <div class="card">
+            <div class="title">🎨 Hình minh hoạ</div>
+            <img src="{{ image_url }}">
+        </div>
+
+        <div class="card">
+            <div class="title">❓ Câu hỏi</div>
+            <div class="quiz">{{ quiz }}</div>
+        </div>
+    {% endif %}
+</div>
+</body>
+</html>

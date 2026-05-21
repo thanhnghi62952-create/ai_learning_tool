@@ -1,0 +1,12 @@
+# chan day file chua ma bao mat api_key
+.env
+#chan cac file bo nho dem tu sinh cua python
+__pycache__/
+*.pyc 
+*.pyo 
+*.pyd
+# chan file cau hinh he dieu hanh an neu code
+.DS_Store
+Thumbs.db 
+#chan cac thu muc log va du lieu ao khong can thiet khi deploy
+.ipynb_checkpoints/
