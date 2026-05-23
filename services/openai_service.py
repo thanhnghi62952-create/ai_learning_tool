@@ -1,6 +1,5 @@
 import sys
 import os
-import base64
 from openai import OpenAI
 
 def get_client():
@@ -10,7 +9,6 @@ def get_client():
     else:
         return OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
-# Khởi tạo biến client sát lề trái, chạy được ở cả Colab và Render
 client = get_client()
 
 def explain(concept):
@@ -18,13 +16,27 @@ def explain(concept):
         res = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": "Explain clearly for beginners with simple examples"
-                },
+                {"role": "system", "content": "Explain clearly for beginners with simple examples"},
                 {"role": "user", "content": concept}
             ]
         )
         return res.choices[0].message.content
     except Exception as e:
-        return f"Lỗi kết nối OpenAI: {str(e)}"
+        return f"Lỗi: {str(e)}"
+
+def generate_quiz(concept):
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Create a multiple choice quiz about the concept"},
+                {"role": "user", "content": concept}
+            ]
+        )
+        return res.choices[0].message.content
+    except Exception as e:
+        return f"Lỗi: {str(e)}"
+
+def generate_image(concept):
+    # Khai báo sẵn cấu trúc hàm để app.py import không bị lỗi sập server
+    return "Tính năng tạo ảnh đang được phát triển"
