@@ -3,131 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Learning Tool - Nền Tảng Học Tập Thông Minh</title>
+    <title>AI Learning Tool - Lịch sử cơ sở dữ liệu</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-    </style>
+    <style>body { font-family: 'Inter', sans-serif; }</style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between">
 
     <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-xs">
-        <div class="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
             <div class="flex items-center space-x-3">
                 <span class="text-2xl">🚀</span>
                 <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
-                    AI Learning Tool
+                    <a href="/">AI Learning Tool</a>
                 </h1>
             </div>
-            <span class="text-xs bg-indigo-50 text-indigo-700 font-medium px-2.5 py-1 rounded-full border border-indigo-100">
-                Production v1.0
+            <span class="text-xs bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-full border border-emerald-100 flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> DB Connected
             </span>
         </div>
     </header>
 
-    <main class="max-w-5xl mx-auto px-4 py-8 flex-grow w-full">
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 mb-8 transition-all hover:shadow-md">
-            <h2 class="text-2xl font-bold text-slate-900 mb-2">Hôm nay bạn muốn học gì?</h2>
-            <p class="text-slate-500 mb-6 text-sm md:text-base">Nhập một khái niệm, thuật toán hoặc chủ đề bất kỳ. AI sẽ giải thích, đặt câu hỏi và vẽ sơ đồ tư duy trực quan cho bạn.</p>
-            
-            <form method="POST" id="searchForm" class="flex flex-col sm:flex-row gap-3">
-                <input 
-                    type="text" 
-                    name="concept" 
-                    placeholder="Ví dụ: Markov Decision Process, Gradient Descent, Cơn bão tài chính..." 
-                    required
-                    class="flex-grow px-4 py-3 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base shadow-inner"
-                >
-                <button 
-                    type="submit"
-                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-3 rounded-xl shadow-lg shadow-indigo-100 transition-colors duration-200 flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
-                >
-                    <span>Yêu cầu AI xử lý</span>
-                    <span>✨</span>
-                </button>
-            </form>
-        </div><div id="loadingState" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center my-8 animate-pulse">
-            <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent mb-4"></div>
-            <h3 class="text-lg font-semibold text-slate-900">AI đang phân tích khái niệm...</h3>
-            <p class="text-slate-500 text-sm mt-1">Quá trình này bao gồm giải nghĩa cấu trúc và sinh ảnh sơ đồ (DALL-E 3) có thể mất khoảng 10-15 giây.</p>
-            <div class="mt-4 text-xs font-mono text-indigo-600 bg-indigo-50 inline-block px-3 py-1 rounded-md">
-                Thời gian đã trôi qua: <span id="timer">0</span> giây
+    <div class="max-w-7xl mx-auto px-4 py-8 flex-grow w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <aside class="lg:col-span-3 space-y-4 order-2 lg:order-1">
+            <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm sticky top-24">
+                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+                    <span>Lịch sử bài học</span>
+                    <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-mono font-normal">{{ history|length }}</span>
+                </h3>
+                {% if history %}
+                <div class="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
+                    {% for item in history %}
+                    <a 
+                        href="/?view={{ item.id }}" 
+                        class="block text-sm px-3 py-2.5 rounded-xl transition-all border border-transparent truncate hover:bg-slate-50 hover:text-indigo-600 {% if concept == item.concept %} bg-indigo-50 border-indigo-100 text-indigo-700 font-medium {% else %} text-slate-600 {% endif %}"
+                    >
+                        📝 {{ item.concept }}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}<p class="text-xs text-slate-400 italic py-4 text-center">Chưa có lịch sử học tập nào được lưu trữ.</p>
+                {% endif %}
             </div>
-        </div>
+        </aside>
 
-        {% if explanation or quiz or image_url %}
-        <div id="resultContainer" class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            
-            <div class="lg:col-span-7 space-y-8">
-                {% if explanation %}
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
-                    <div class="flex items-center space-x-2 pb-4 mb-4 border-b border-slate-100">
-                        <span class="text-xl">💡</span>
-                        <h3 class="text-lg font-bold text-slate-900">Bản dịch & Giải thích chi tiết</h3>
+        <main class="lg:col-span-9 space-y-8 order-1 lg:order-2">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
+                <h2 class="text-2xl font-bold text-slate-900 mb-2">Hôm nay bạn muốn học gì?</h2>
+                <form method="POST" id="searchForm" class="flex flex-col sm:flex-row gap-3">
+                    <input 
+                        type="text" 
+                        name="concept" 
+                        value="{% if concept %}{{ concept }}{% endif %}"
+                        placeholder="Ví dụ: Diffusion Transformers, Markov Decision Process..." 
+                        required
+                        class="flex-grow px-4 py-3 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-base shadow-inner"
+                    >
+                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-3 rounded-xl shadow-lg transition-colors flex items-center justify-center space-x-2 cursor-pointer">
+                        <span>Tra cứu AI</span>
+                        <span>✨</span>
+                    </button>
+                </form>
+            </div>
+
+            <div id="loadingState" class="hidden bg-white rounded-2xl border border-slate-200 p-12 text-center animate-pulse">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent mb-4"></div>
+                <h3 class="text-lg font-semibold text-slate-900">AI đang xử lý khái niệm và đồng bộ Database...</h3>
+                <div class="mt-4 text-xs font-mono text-indigo-600 bg-indigo-50 inline-block px-3 py-1 rounded-md">
+                    Thời gian thực tế: <span id="timer">0</span> giây
+                </div>
+            </div>
+
+            {% if explanation or quiz or image_url %}
+            <div id="resultContainer" class="grid grid-cols-1 xl:grid-cols-12 gap-8">
+                <div class="xl:col-span-7 space-y-8">
+                    {% if explanation %}
+                    <div class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+                        <h3 class="text-lg font-bold text-slate-900 pb-3 mb-4 border-b border-slate-100 flex items-center gap-2">💡 Giải thích thuật ngữ</h3>
+                        <div class="prose text-slate-600 leading-relaxed whitespace-pre-line text-sm md:text-base">{{ explanation }}</div>
                     </div>
-                    <div class="prose max-w-none text-slate-600 leading-relaxed whitespace-pre-line text-sm md:text-base">
-                        {{ explanation }}
+                    {% endif %}
+
+                    {% if quiz %}
+                    <div class="bg-slate-900 text-white rounded-2xl p-6 md:p-8 shadow-xl"><h3 class="text-lg font-bold pb-3 mb-4 border-b border-white/10 flex items-center gap-2">🎯 Kiểm tra năng lực (Quiz)</h3>
+                        <div class="text-slate-200 leading-relaxed whitespace-pre-line text-sm md:text-base">{{ quiz }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% if image_url %}
+                <div class="xl:col-span-5">
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24 shadow-sm">
+                        <h3 class="text-base font-bold text-slate-900 pb-2 mb-3 border-b border-slate-100 px-1">🖼️ Sơ đồ tư duy trực quan</h3>
+                        <div class="overflow-hidden rounded-xl bg-slate-50 border border-slate-200"><img src="{{ image_url }}" class="w-full h-auto object-cover" loading="lazy"></div>
+                        <div class="mt-3 flex justify-between items-center px-1 text-xs text-slate-400">
+                            <span>Mô hình: DALL-E 3</span>
+                            <a href="{{ image_url }}" target="_blank" class="text-indigo-600 font-semibold hover:underline">Mở ảnh gốc ↗</a>
+                        </div>
                     </div>
                 </div>
                 {% endif %}
-
-                {% if quiz %}
-                <div class="bg-linear-to-br from-slate-900 to-indigo-950 text-white rounded-2xl shadow-xl p-6 md:p-8">
-                    <div class="flex items-center space-x-2 pb-4 mb-4 border-b border-white/10">
-                        <span class="text-xl">🎯</span>
-                        <h3 class="text-lg font-bold">Thử thách hiểu biết (Quiz)</h3>
-                    </div>
-                    <div class="text-slate-200 leading-relaxed whitespace-pre-line mb-4 text-sm md:text-base">
-                        {{ quiz }}
-                    </div>
-                    <div class="bg-white/5 border border-white/10 rounded-xl p-4 text-xs text-slate-400 italic flex items-start space-x-2">
-                        <span>💡</span>
-                        <span>Mẹo: Hãy tự suy nghĩ câu trả lời trong đầu để củng cố vùng nhớ não bộ trước khi tra cứu đáp án nhé!</span>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-
-            {% if image_url %}
-            <div class="lg:col-span-5">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sticky top-24">
-                    <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-slate-100 px-2"><span class="text-xl">🖼️</span>
-                        <h3 class="text-base font-bold text-slate-900">Sơ đồ minh họa trực quan</h3>
-                    </div>
-                    <div class="overflow-hidden rounded-xl bg-slate-100 border border-slate-200 group">
-                        <img 
-                            src="{{ image_url }}" 
-                            alt="Sơ đồ minh họa từ AI" 
-                            class="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105"
-                            loading="lazy"
-                        >
-                    </div>
-                    <div class="mt-3 px-2 flex justify-between items-center">
-                        <p class="text-xs text-slate-400">Mô hình: DALL-E 3 Sơ đồ học thuật</p>
-                        <a 
-                            href="{{ image_url }}" 
-                            target="_blank" 
-                            class="text-xs text-indigo-600 hover:text-indigo-700 font-semibold flex items-center space-x-1"
-                        >
-                            <span>Mở ảnh lớn</span>
-                            <span>↗</span>
-                        </a>
-                    </div>
-                </div>
             </div>
             {% endif %}
+        </main>
+    </div>
 
-        </div>
-        {% endif %}
-    </main>
-
-    <footer class="bg-white border-t border-slate-200 mt-12 py-6 text-center text-xs text-slate-400">
-        <div class="max-w-5xl mx-auto px-4">
-            <p>© 2026 AI Learning Tool. Kiến trúc Module chuẩn hóa hệ thống.</p>
-        </div>
+    <footer class="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-400">
+        <p>© 2026 AI Learning Tool. Đồng bộ hóa hệ thống dữ liệu đám mây Supabase PostgreSQL.</p>
     </footer>
 
     <script>
@@ -137,23 +122,11 @@
         const timerElement = document.getElementById('timer');
 
         form.addEventListener('submit', function() {
-            // 1. Ẩn khối kết quả cũ đi (nếu có) để người dùng tập trung vào trạng thái mới
-            if (resultContainer) {
-                resultContainer.style.opacity = '0.3';
-            }
-            
-            // 2. Hiển thị khối hoạt họa Loading sáng lên
+            if (resultContainer) resultContainer.style.opacity = '0.3';
             loadingState.classList.remove('hidden');
-            
-            // 3. Cuộn màn hình xuống khối loading để người dùng dễ nhìn thấy trên điện thoại
             loadingState.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
-            // 4. Kích hoạt bộ đếm thời gian thực tăng dần theo từng giây
             let seconds = 0;
-            setInterval(() => {
-                seconds++;
-                timerElement.textContent = seconds;
-            }, 1000);
+            setInterval(() => { seconds++; timerElement.textContent = seconds; }, 1000);
         });
     </script>
 </body>
