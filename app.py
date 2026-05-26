@@ -1,54 +1,66 @@
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from services.openai_service import explain, generate_quiz, generate_image
+from supabase import create_client, Client #fix 
+
+# khoi tao ung dung flask
 
 app = Flask(__name__)
 # Chuỗi khóa bảo mật session bắt buộc phải cấu hình khi làm việc thương mại
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "b4f8d52361a9e8c4d7b2a5f1d9e3c6b8")
+#ket noi thanh toi supabase bang 2 bien vua nap tren Render (fix)
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(supabase_url, supabase_key) 
 
-def get_db_connection():
-    db_url = os.environ.get("DATABASE_URL")
-    return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+#def get_db_connection():
+    #db_url = os.environ.get("DATABASE_URL")
+   # return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
 
 # ==================== LUỒNG XỬ LÝ ĐĂNG KÝ (REGISTER) ====================
-@app.route("/register", methods=["POST"])
+@app.route('/register', methods=['POST'])
 def register():
-    email = request.form.get("email", "").strip()
-    password = request.form.get("password", "")
+    email = request.form.get('email', '').strip()
+    password = request.form.get('password', '')
 
     if not email or not password:
         return render_template("auth.html", error="Vui lòng điền đầy đủ email và mật khẩu.")
 
-    # Mã hóa mật khẩu thành chuỗi bảo mật an toàn cao
-    password_hash = generate_password_hash(password)
-
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+        # 1. Gọi tính năng Auth tích hợp sẵn của Supabase để tạo tài khoản tài khoản bảo mật
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password
+        })
+        
+        # 2. Nếu đăng ký bên Supabase Auth thành công
+        if response.user:
+            # Lấy ID độc nhất mà Supabase vừa sinh ra cho user này
+            supabase_user_id = response.user.id 
+            
+            # 3. Thay thế cho lệnh INSERT INTO cũ bằng lệnh API siêu sạch:
+            # Chèn thông tin vào bảng 'users', tặng sẵn 5 lượt dùng miễn phí
+            supabase.table("users").insert({
+                "id": supabase_user_id, # Lưu ý: Nên lưu ID này để đồng bộ với Auth
+                "email": email,
+                "role": "free",
+                "credits_left": 5
+            }).execute()
 
-        # Thêm người dùng mới vào bảng users, tặng sẵn 5 lượt dùng miễn phí
-        cur.execute(
-            "INSERT INTO users (email, password_hash, role, credits_left) VALUES (%s, %s, 'free', 5) RETURNING id;",
-            (email, password_hash)
-        )
-        user = cur.fetchone()
-        conn.commit()
-
-        # Đăng ký xong tự động đăng nhập luôn
-        session['user_id'] = user['id']
-        session['user_email'] = email
-
-        cur.close()
-        conn.close()
-        return redirect(url_for("home"))
-    except psycopg2.errors.UniqueViolation:
-        return render_template("auth.html", error="Email này đã được đăng ký trên hệ thống.")
+            # 4. Lưu thông tin đăng nhập vào Session của Flask để giữ trạng thái đăng nhập
+            session['user_id'] = supabase_user_id
+            session['user_email'] = email
+            
+            # 5. Đăng ký xong xuôi, đưa người dùng thẳng vào trang chủ Dashboard
+            return redirect(url_for('dashboard'))
+            
     except Exception as e:
-        return render_template("auth.html", error=f"Lỗi hệ thống: {str(e)}")
-
+        # Bắt mọi loại lỗi (trùng email, mật khẩu yếu, lỗi hệ thống) và hiển thị lên giao diện
+        error_msg = str(e)
+        if "already registered" in error_msg.lower() or "unique" in error_msg.lower():
+            return render_template("auth.html", error="Email này đã được đăng ký trên hệ thống.")
+        return render_template("auth.html", error=f"Lỗi hệ thống: {error_msg}")
 # ==================== LUỒNG XỬ LÝ ĐĂNG NHẬP (LOGIN) ====================
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -58,23 +70,34 @@ def login():
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "")
 
+    if not email or not password:
+        return render_template("auth.html", error="Vui lòng điền đầy đủ email và mật khẩu.")
+
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE email = %s;", (email,))
-        user = cur.fetchone()
-        cur.close()
-        conn.close()
+        # 1. Gọi API Supabase Auth để xác thực email và mật khẩu người dùng nhập vào
+        response = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
 
-        # Kiểm tra sự tồn tại của user và đối chiếu chuỗi mật khẩu hash
-        if user and check_password_hash(user['password_hash'], password):
-            session['user_id'] = user['id']
-            session['user_email'] = user['email']
-            return redirect(url_for("home"))
-        else:return render_template("auth.html", error="Tài khoản hoặc mật khẩu không chính xác.")
+        # 2. Nếu thông tin chính xác, Supabase sẽ trả về đối tượng user hợp lệ
+        if response.user:
+            # Lưu ID độc nhất của Supabase và Email vào Session của Flask để giữ trạng thái đăng nhập
+            session['user_id'] = response.user.id
+            session['user_email'] = response.user.email
+            
+            # 3. Đăng nhập thành công, đưa người dùng thẳng vào trang Dashboard (hoặc home tùy bạn cấu hình)
+            return redirect(url_for("dashboard"))
+            
     except Exception as e:
-        return render_template("auth.html", error=f"Lỗi hệ thống: {str(e)}")
-
+        # Bộ máy Supabase Auth sẽ tự động ném ra lỗi nếu sai mật khẩu hoặc sai email
+        error_msg = str(e)
+        
+        # Bắt các từ khóa lỗi phổ biến để hiển thị câu thông báo tiếng Việt thân thiện
+        if "invalid login credentials" in error_msg.lower():
+            return render_template("auth.html", error="Email hoặc mật khẩu không chính xác.")
+        
+        return render_template("auth.html", error=f"Lỗi hệ thống: {error_msg}")
 # ==================== LUỒNG ĐĂNG XUẤT (LOGOUT) ====================
 @app.route("/logout")
 def logout():
