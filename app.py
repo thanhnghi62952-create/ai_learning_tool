@@ -53,7 +53,7 @@ def register():
             session['user_email'] = email
             
             # 5. Đăng ký xong xuôi, đưa người dùng thẳng vào trang chủ Dashboard
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('home'))
             
     except Exception as e:
         # Bắt mọi loại lỗi (trùng email, mật khẩu yếu, lỗi hệ thống) và hiển thị lên giao diện
@@ -87,7 +87,7 @@ def login():
             session['user_email'] = response.user.email
             
             # 3. Đăng nhập thành công, đưa người dùng thẳng vào trang Dashboard (hoặc home tùy bạn cấu hình)
-            return redirect(url_for("dashboard"))
+            return redirect(url_for("home"))
             
     except Exception as e:
         # Bộ máy Supabase Auth sẽ tự động ném ra lỗi nếu sai mật khẩu hoặc sai email
