@@ -131,7 +131,7 @@ def home():
                                credits=credits,
                                explanation=None,
                                quiz=None,
-                               image-url=None,
+                               image_url=None,
                                selected_concept=None)
 
     # Lấy thông tin tài khoản thời gian thực của người dùng hiện tại
