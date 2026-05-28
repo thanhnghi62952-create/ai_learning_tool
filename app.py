@@ -145,7 +145,7 @@ def home():
                     prompt = f"Giải thích khái niệm '{selected_concept}' một cách ngắn gọn, dễ hiểu cho người học máy (Machine Learning)."
                     
                     # Gọi OpenAI GPT (Hoặc chỉnh sửa theo hàm gọi AI riêng trước đó của bạn)
-                    ai_response = client.chat.completion.create(
+                    ai_response = client.chat.completions.create(
                         model="gpt-4o", # Hoặc gpt-4o tùy thuộc API Key của bạn
                         messages=[{"role": "user", "content": prompt}]
                     )
