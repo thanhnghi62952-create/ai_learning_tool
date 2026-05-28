@@ -1,4 +1,5 @@
 import os
+import openai
 from flask import Flask, render_template, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from services.openai_service import explain, generate_quiz, generate_image
