@@ -1,9 +1,11 @@
 import os
-import openai
+from openai import OpenAI
 from flask import Flask, render_template, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from services.openai_service import explain, generate_quiz, generate_image
 from supabase import create_client, Client #fix 
+#khoi tao client
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # khoi tao ung dung flask
 
@@ -143,8 +145,8 @@ def home():
                     prompt = f"Giải thích khái niệm '{selected_concept}' một cách ngắn gọn, dễ hiểu cho người học máy (Machine Learning)."
                     
                     # Gọi OpenAI GPT (Hoặc chỉnh sửa theo hàm gọi AI riêng trước đó của bạn)
-                    ai_response = openai.ChatCompletion.create(
-                        model="gpt-3.5-turbo", # Hoặc gpt-4o tùy thuộc API Key của bạn
+                    ai_response = client.chat.completion.create(
+                        model="gpt-4o", # Hoặc gpt-4o tùy thuộc API Key của bạn
                         messages=[{"role": "user", "content": prompt}]
                     )
                     explanation = ai_response.choices[0].message['content'].strip()
