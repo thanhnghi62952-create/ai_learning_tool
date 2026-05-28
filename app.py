@@ -104,47 +104,74 @@ def logout():
     session.clear() # Xóa sạch cookie phiên làm việc
     return redirect(url_for("login"))
 # ============================ TRANG CHỦ ỨNG DỤNG (HOME) ============================
+
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home")
 def home():
-    # Kiểm tra bảo mật: Nếu chưa đăng nhập, bắt buộc quay về trang login
+    # 1. CHỐT CHẶN BẢO MẬT: Bắt buộc đăng nhập
     if 'user_id' not in session:
         return redirect(url_for("login"))
         
     try:
-        # Lấy TOÀN BỘ thông tin hàng dữ liệu của user từ Supabase (gồm cả role và credits_left)
+        # Lấy thông tin user hiện tại từ Supabase
         response = supabase.table("users").select("*").eq("id", session['user_id']).execute()
-        
-        # Tạo sẵn một profile mặc định để cứu nguy nếu database trống
         user_profile = {'role': 'free', 'credits_left': 0}
         credits = 0
-        
-        # Nếu tìm thấy dữ liệu người dùng trong bảng users
         if response.data and len(response.data) > 0:
             user_profile = response.data[0]
             credits = user_profile.get('credits_left', 0)
+
+        # Khởi tạo các giá trị hiển thị ban đầu là rỗng
+        explanation = None
+        quiz = None
+        image_url = None
+        selected_concept = None
+
+        # 2. XỬ LÝ KHI NGƯỜI DÙNG NHẤN NÚT TRA CỨU (POST)
+        if request.method == 'POST':
+            # Lấy từ khóa người dùng gõ vào ô tìm kiếm
+            selected_concept = request.form.get('concept', '').strip()
             
-        # Trả về giao diện chính và nạp đầy đủ tất cả các biến mà file HTML cũ yêu cầu
+            if selected_concept:
+                # KIỂM TRA LƯỢT DÙNG: Nếu hết credits thì không cho gọi AI
+                if credits <= 0:
+                    explanation = "Bạn đã hết lượt tra cứu miễn phí. Vui lòng nâng cấp tài khoản!"
+                else:
+                    # ---- ĐOẠN GỌI AI PHÂN TÍCH KHÁI NIỆM ----
+                    # Bạn có thể thay đổi prompt tùy theo mong muốn của bạn
+                    prompt = f"Giải thích khái niệm '{selected_concept}' một cách ngắn gọn, dễ hiểu cho người học máy (Machine Learning)."
+                    
+                    # Gọi OpenAI GPT (Hoặc chỉnh sửa theo hàm gọi AI riêng trước đó của bạn)
+                    ai_response = openai.ChatCompletion.create(
+                        model="gpt-3.5-turbo", # Hoặc gpt-4o tùy thuộc API Key của bạn
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    explanation = ai_response.choices[0].message['content'].strip()
+                    
+                    # (Tùy chọn) Nếu bạn có code sinh Quiz hoặc Ảnh, bạn thêm logic vào đây
+                    quiz = f"Câu hỏi ôn tập nhanh cho khái niệm {selected_concept} sẽ xuất hiện tại đây."
+                    image_url = None 
+
+                    # TRỪ ĐI 1 LƯỢT DÙNG TRONG DATABASE SUPABASE
+                    new_credits = max(0, credits - 1)
+                    supabase.table("users").update({"credits_left": new_credits}).eq("id", session['user_id']).execute()
+                    
+                    # Cập nhật lại biến hiển thị ngay trên màn hình hiện tại
+                    credits = new_creditsuser_profile['credits_left'] = new_credits
+
+        # 3. TRẢ DỮ LIỆU ĐÃ XỬ LÝ RA GIAO DIỆN KHÔNG BỊ RỖNG NỮA
         return render_template('index.html', 
                                credits=credits, 
-                               user_profile=user_profile, # <--- Truyền biến này để sửa dứt điểm lỗi Jinja2
-                               explanation=None, 
-                               quiz=None, 
-                               image_url=None, 
-                               selected_concept=None)
+                               user_profile=user_profile,
+                               explanation=explanation, 
+                               quiz=quiz, 
+                               image_url=image_url, 
+                               selected_concept=selected_concept)
         
     except Exception as e:
-        print(f"Lỗi lấy thông tin user tại home: {e}")
-        # Phương án dự phòng an toàn: Tạo profile rỗng để giao diện không bị sập lỗi 500
+        print(f"Lỗi hệ thống tại home: {e}")
         fake_profile = {'role': 'free', 'credits_left': 0}
-        return render_template('index.html', 
-                               credits=0, 
-                               user_profile=fake_profile, 
-                               explanation=None, 
-                               quiz=None, 
-                               image_url=None, 
-                               selected_concept=None)
-
+        return render_template('index.html', credits=0, user_profile=fake_profile, explanation=f"Có lỗi xảy ra: {e}", quiz=None, image_url=None)
     # Lấy thông tin tài khoản thời gian thực của người dùng hiện tại
     cur.execute("SELECT role, credits_left FROM users WHERE id = %s;", (user_id,))
     user_profile = cur.fetchone()
