@@ -103,7 +103,6 @@ def login():
 def logout():
     session.clear() # Xóa sạch cookie phiên làm việc
     return redirect(url_for("login"))
-
 # ============================ TRANG CHỦ ỨNG DỤNG (HOME) ============================
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home")
@@ -113,25 +112,37 @@ def home():
         return redirect(url_for("login"))
         
     try:
-        # Lấy số lượt dùng (credits_left) từ Supabase một cách chính xác
-        response = supabase.table("users").select("credits_left").eq("id", session['user_id']).execute()
+        # Lấy TOÀN BỘ thông tin hàng dữ liệu của user từ Supabase (gồm cả role và credits_left)
+        response = supabase.table("users").select("*").eq("id", session['user_id']).execute()
         
+        # Tạo sẵn một profile mặc định để cứu nguy nếu database trống
+        user_profile = {'role': 'free', 'credits_left': 0}
         credits = 0
-        # Kiểm tra dữ liệu trả về an toàn để tránh lỗi crash index
+        
+        # Nếu tìm thấy dữ liệu người dùng trong bảng users
         if response.data and len(response.data) > 0:
-            credits = response.data[0].get('credits_left', 0)
+            user_profile = response.data[0]
+            credits = user_profile.get('credits_left', 0)
             
-        # Trả về giao diện chính và truyền số credits để hiển thị lên UI
-        return render_template('index.html', credits=credits)
+        # Trả về giao diện chính và nạp đầy đủ tất cả các biến mà file HTML cũ yêu cầu
+        return render_template('index.html', 
+                               credits=credits, 
+                               user_profile=user_profile, # <--- Truyền biến này để sửa dứt điểm lỗi Jinja2
+                               explanation=None, 
+                               quiz=None, 
+                               image_url=None, 
+                               selected_concept=None)
         
     except Exception as e:
         print(f"Lỗi lấy thông tin user tại home: {e}")
-        # Nếu có lỗi bất ngờ, vẫn cho vào trang với 0 credit thay vì làm sập server
+        # Phương án dự phòng an toàn: Tạo profile rỗng để giao diện không bị sập lỗi 500
+        fake_profile = {'role': 'free', 'credits_left': 0}
         return render_template('index.html', 
-                               credits=credits,
-                               explanation=None,
-                               quiz=None,
-                               image_url=None,
+                               credits=0, 
+                               user_profile=fake_profile, 
+                               explanation=None, 
+                               quiz=None, 
+                               image_url=None, 
                                selected_concept=None)
 
     # Lấy thông tin tài khoản thời gian thực của người dùng hiện tại
