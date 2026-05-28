@@ -127,7 +127,12 @@ def home():
     except Exception as e:
         print(f"Lỗi lấy thông tin user tại home: {e}")
         # Nếu có lỗi bất ngờ, vẫn cho vào trang với 0 credit thay vì làm sập server
-        return render_template('index.html', credits=0)
+        return render_template('index.html', 
+                               credits=credits,
+                               explanation=None,
+                               quiz=None,
+                               image-url=None,
+                               selected_concept=None)
 
     # Lấy thông tin tài khoản thời gian thực của người dùng hiện tại
     cur.execute("SELECT role, credits_left FROM users WHERE id = %s;", (user_id,))
