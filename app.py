@@ -104,22 +104,30 @@ def logout():
     session.clear() # Xóa sạch cookie phiên làm việc
     return redirect(url_for("login"))
 
-# ==================== TRANG CHỦ ỨNG DỤNG (HOME) ====================
+# ============================ TRANG CHỦ ỨNG DỤNG (HOME) ============================
 @app.route("/", methods=["GET", "POST"])
+@app.route("/home")
 def home():
-    # CHỐT CHẶN BẢO MẬT: Nếu chưa đăng nhập, bắt buộc đá về trang login
+    # Kiểm tra bảo mật: Nếu chưa đăng nhập, bắt buộc quay về trang login
     if 'user_id' not in session:
         return redirect(url_for("login"))
-
-    user_id = session['user_id']
-    explanation = None
-    quiz = None
-    image_url = None
-    selected_concept = None
-    history_list = []
-
-    conn = get_db_connection()
-    cur = conn.cursor()
+        
+    try:
+        # Lấy số lượt dùng (credits_left) từ Supabase một cách chính xác
+        response = supabase.table("users").select("credits_left").eq("id", session['user_id']).execute()
+        
+        credits = 0
+        # Kiểm tra dữ liệu trả về an toàn để tránh lỗi crash index
+        if response.data and len(response.data) > 0:
+            credits = response.data[0].get('credits_left', 0)
+            
+        # Trả về giao diện chính và truyền số credits để hiển thị lên UI
+        return render_template('index.html', credits=credits)
+        
+    except Exception as e:
+        print(f"Lỗi lấy thông tin user tại home: {e}")
+        # Nếu có lỗi bất ngờ, vẫn cho vào trang với 0 credit thay vì làm sập server
+        return render_template('index.html', credits=0)
 
     # Lấy thông tin tài khoản thời gian thực của người dùng hiện tại
     cur.execute("SELECT role, credits_left FROM users WHERE id = %s;", (user_id,))
