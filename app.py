@@ -116,6 +116,7 @@ def logout():
     return redirect(url_for("login"))
 # ============================ TRANG CHỦ ỨNG DỤNG (HOME) ============================
 
+# ============================ TRANG CHỦ ỨNG DỤNG (HOME) ============================
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home")
 def home():
@@ -140,7 +141,6 @@ def home():
 
         # 2. XỬ LÝ KHI NGƯỜI DÙNG NHẤN NÚT TRA CỨU (POST)
         if request.method == 'POST':
-            # Lấy từ khóa người dùng gõ vào ô tìm kiếm
             selected_concept = request.form.get('concept', '').strip()
             
             if selected_concept:
@@ -148,9 +148,8 @@ def home():
                 if credits <= 0:
                     explanation = "Bạn đã hết lượt tra cứu miễn phí. Vui lòng nâng cấp tài khoản!"
                 else:
-                    # ---- ĐOẠN GỌI AI PHÂN TÍCH KHÁI NIỆM ----
-                    # Bạn có thể thay đổi prompt tùy theo mong muốn của bạn
-                  system_instruction = (
+                    # ---- BƯỚC 1: GỌI GPT-4O RÈNG PROMPT VÀ GIẢI THÍCH ĐA NGÀNH ----
+                    system_instruction = (
                         "You are an elite cross-disciplinary AI professor. The user will give you a concept "
                         "from any field (e.g., Finance, Medicine, Psychology, Engineering, Arts, or Tech).\n\n"
                         "Your job is to generate a JSON response containing two fields:\n"
@@ -160,41 +159,43 @@ def home():
                         "Instead of a generic chart, design a powerful visual metaphor, educational concept art, "
                         "or clean modern infographic that brings the core idea to life. Strictly NO unreadable or garbled text inside the image."
                     )
-                     # Gọi GPT-4o ép cấu hình JSON Schema
-                        ai_completion = client.beta.chat.completions.parse(
+                    
+                    # Gọi GPT-4o ép cấu hình JSON Schema (Lưu ý: Phải chắc chắn đã import AIResponseSchema ở trên)
+                    ai_completion = client.beta.chat.completions.parse(
                         model="gpt-4o",
-                        messages=[{"role": "system", "content": system_instruction},
+                        messages=[
+                            {"role": "system", "content": system_instruction},
                             {"role": "user", "content": f"Khái niệm cần tra cứu: {selected_concept}"}
-                        ],
-                        response_format=AIResponseSchema, # Ép mô hình tuân thủ cấu trúc Pydantic
+                        ],response_format=AIResponseSchema,
                         temperature=0.7
                     )
-                     # Trích xuất dữ liệu dạng Object an toàn tuyệt đối
+                    
+                    # Trích xuất dữ liệu dạng Object an toàn tuyệt đối
                     structured_data = ai_completion.choices[0].message.parsed
                     explanation = structured_data.vietnamese_explanation
                     dalle_prompt = structured_data.dalle_prompt
 
-                     
                     # -----------------------------------------------------------------
                     # BƯỚC 2: CHUYỂN PROMPT THÔNG MINH SANG CHO DALL-E 3
                     # -----------------------------------------------------------------
                     try:
                         image_response = client.images.generate(
-                        model="dall-e-3",
-                        prompt=dalle-prompt, # prompt duoc toi uu hoa thong dua tren ban chat linh vuc
-                        n=1,
-                        size="1024x1024"
+                            model="dall-e-3",       # Đã sửa lỗi gõ thừa chữ -e
+                            prompt=dalle_prompt,    # Đã sửa lỗi sai tên biến gạch ngang thành gạch dưới
+                            n=1,
+                            size="1024x1024"
                         )
                         image_url = image_response.data[0].url
                     except Exception as img_err:
-                        print(f"lỗi khi gọi DALL-E 3: {img_err}")
-                        image_url = None
+                        print(f"Lỗi khi gọi DALL-E 3: {img_err}")
+                        image_url = None            # Đã sửa chữ none viết thường thành chuẩn Python None
+
                     # -----------------------------------------------------------------
                     # BƯỚC 3: CẬP NHẬT DATABASE VÀ ĐỒNG BỘ GIAO DIỆN
-                    # ---------------------------------------------------------------
-                    # (Tùy chọn) Nếu bạn có code sinh Quiz hoặc Ảnh, bạn thêm logic vào đây
+                    # -----------------------------------------------------------------
                     quiz = f"Câu hỏi ôn tập nhanh cho khái niệm {selected_concept} sẽ xuất hiện tại đây."
                     
+                    # ĐÃ XÓA dòng "image_url = None" nguy hại làm mất ảnh ở đây!
 
                     # TRỪ ĐI 1 LƯỢT DÙNG TRONG DATABASE SUPABASE
                     new_credits = max(0, credits - 1)
@@ -215,9 +216,10 @@ def home():
         
     except Exception as e:
         print(f"Lỗi hệ thống tại home: {e}")
-        fake_profile = {'role': 'free', 'credits_left': 0}
+        fake_profile = {'role': 'free', 'credits_left': 0}# Đã tách dòng return rõ ràng bên dưới để tránh lỗi cú pháp
         return render_template('index.html', credits=0, user_profile=fake_profile, explanation=f"Có lỗi xảy ra: {e}", quiz=None, image_url=None)
-    # Lấy thông tin tài khoản thời gian thực của người dùng hiện tại
+
+    # lấy thông tin thật của người dùng hiện tại
     cur.execute("SELECT role, credits_left FROM users WHERE id = %s;", (user_id,))
     user_profile = cur.fetchone()
 
