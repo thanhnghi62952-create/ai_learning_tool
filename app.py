@@ -180,7 +180,7 @@ def home():
                     # -----------------------------------------------------------------
                     try:
                         image_response = client.images.generate(
-                        model="dalle-e-3",
+                        model="dall-e-3",
                         prompt=dalle-prompt, # prompt duoc toi uu hoa thong dua tren ban chat linh vuc
                         n=1,
                         size="1024x1024"
@@ -188,13 +188,13 @@ def home():
                         image_url = image_response.data[0].url
                     except Exception as img_err:
                         print(f"lỗi khi gọi DALL-E 3: {img_err}")
-                        image_url = none
+                        image_url = None
                     # -----------------------------------------------------------------
                     # BƯỚC 3: CẬP NHẬT DATABASE VÀ ĐỒNG BỘ GIAO DIỆN
                     # ---------------------------------------------------------------
                     # (Tùy chọn) Nếu bạn có code sinh Quiz hoặc Ảnh, bạn thêm logic vào đây
                     quiz = f"Câu hỏi ôn tập nhanh cho khái niệm {selected_concept} sẽ xuất hiện tại đây."
-                    image_url = None 
+                    
 
                     # TRỪ ĐI 1 LƯỢT DÙNG TRONG DATABASE SUPABASE
                     new_credits = max(0, credits - 1)
