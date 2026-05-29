@@ -1,3 +1,5 @@
+import json
+from pydantic import BaseModel
 import os
 from openai import OpenAI
 from flask import Flask, render_template, request, session, redirect, url_for
@@ -15,7 +17,13 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "b4f8d52361a9e8c4d7b2a5f1d9e
 #ket noi thanh toi supabase bang 2 bien vua nap tren Render (fix)
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(supabase_url, supabase_key) 
+supabase: Client = create_client(supabase_url, supabase_key)
+
+# 1. ĐỊNH NGHĨA CẤU TRÚC JSON MONG MUỐN BẰNG PYDANTIC
+class AIResponseSchema(BaseModel):
+    vietnamese_explanation: str
+    dalle_prompt: str
+
 
 #def get_db_connection():
     #db_url = os.environ.get("DATABASE_URL")
@@ -142,15 +150,48 @@ def home():
                 else:
                     # ---- ĐOẠN GỌI AI PHÂN TÍCH KHÁI NIỆM ----
                     # Bạn có thể thay đổi prompt tùy theo mong muốn của bạn
-                    prompt = f"Giải thích khái niệm '{selected_concept}' một cách ngắn gọn, dễ hiểu cho người học máy (Machine Learning)."
-                    
-                    # Gọi OpenAI GPT (Hoặc chỉnh sửa theo hàm gọi AI riêng trước đó của bạn)
-                    ai_response = client.chat.completions.create(
-                        model="gpt-4o", # Hoặc gpt-4o tùy thuộc API Key của bạn
-                        messages=[{"role": "user", "content": prompt}]
+                  system_instruction = (
+                        "You are an elite cross-disciplinary AI professor. The user will give you a concept "
+                        "from any field (e.g., Finance, Medicine, Psychology, Engineering, Arts, or Tech).\n\n"
+                        "Your job is to generate a JSON response containing two fields:\n"
+                        "1. 'vietnamese_explanation': Explain the concept in Vietnamese. Adapt your tone to be clear, "
+                        "engaging, and rich with practical everyday analogies so non-experts can understand instantly.\n"
+                        "2. 'dalle_prompt': Write a highly creative, vivid, and precise English prompt for DALL-E 3. "
+                        "Instead of a generic chart, design a powerful visual metaphor, educational concept art, "
+                        "or clean modern infographic that brings the core idea to life. Strictly NO unreadable or garbled text inside the image."
                     )
-                    explanation = ai_response.choices[0].message.content.strip()
-                    
+                     # Gọi GPT-4o ép cấu hình JSON Schema
+                    ai_completion = client.beta.chat.completions.parse(
+                        model="gpt-4o",
+                        messages=[{"role": "system", "content": system_instruction},
+                            {"role": "user", "content": f"Khái niệm cần tra cứu: {selected_concept}"}
+                        ],
+                        response_format=AIResponseSchema, # Ép mô hình tuân thủ cấu trúc Pydantic
+                        temperature=0.7
+                    )
+                     # Trích xuất dữ liệu dạng Object an toàn tuyệt đối
+                    structured_data = ai_completion.choices[0].message.parsed
+                    explanation = structured_data.vietnamese_explanation
+                    dalle_prompt = structured_data.dalle_prompt
+
+                     
+                    # -----------------------------------------------------------------
+                    # BƯỚC 2: CHUYỂN PROMPT THÔNG MINH SANG CHO DALL-E 3
+                    # -----------------------------------------------------------------
+                    try:
+                        image_response = client.images.generate(
+                        model="dalle-e-3",
+                        prompt=dalle-prompt, # prompt duoc toi uu hoa thong dua tren ban chat linh vuc
+                        n=1,
+                        size="1024x1024"
+                        )
+                        image_url = image_response.data[0].url
+                    except Exception as img_err:
+                        print(f"lỗi khi gọi DALL-E 3: {img_err}")
+                        image_url = none
+                    # -----------------------------------------------------------------
+                    # BƯỚC 3: CẬP NHẬT DATABASE VÀ ĐỒNG BỘ GIAO DIỆN
+                    # ---------------------------------------------------------------
                     # (Tùy chọn) Nếu bạn có code sinh Quiz hoặc Ảnh, bạn thêm logic vào đây
                     quiz = f"Câu hỏi ôn tập nhanh cho khái niệm {selected_concept} sẽ xuất hiện tại đây."
                     image_url = None 
