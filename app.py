@@ -114,98 +114,130 @@ def login():
 def logout():
     session.clear() # Xóa sạch cookie phiên làm việc
     return redirect(url_for("login"))
-# ============================ TRANG CHỦ ỨNG DỤNG (HOME) ============================
 
-# ============================ TRANG CHỦ ỨNG DỤNG (HOME) ============================
+
+# =====================================================================
+# TẦNG 1: ĐỊNH NGHĨA CẤU TRÚC DỮ LIỆU ĐẦU RA (DATA SCHEMA LAYER)
+# =====================================================================
+class AIResponseSchema(BaseModel):
+    vietnamese_explanation: str
+    dalle_prompt: str
+
+
+# =====================================================================
+# TẦNG 2: XỬ LÝ LOGIC AI ĐỘC LẬP (AI SERVICE LAYER)
+# =====================================================================
+def goi_openai_xu_ly(khai_niem: str) -> AIResponseSchema:
+    """
+    Hàm chuyên trách gọi GPT-4o để bóc tách lời giải thích chuyên sâu 
+    và rèn Prompt nghệ thuật cho DALL-E 3.
+    """
+    # Nâng cấp kỹ thuật Prompt để AI giải thích bùng nổ, có chiều sâu chuyên gia
+    system_instruction = (
+        "You are an elite, world-class cross-disciplinary professor and master storyteller. "
+        "The user will give you a concept from any specialized field (e.g., Quantum Computing, "
+        "Machine Learning, Advanced Finance, Medicine, Psychology, or Philosophy).\n\n"
+        "Your mission is to generate a JSON response with exactly two fields:\n\n"
+        "1. 'vietnamese_explanation': Write a deep, captivating, and highly educational breakdown in Vietnamese. "
+        "DO NOT give a dry, brief dictionary definition. Instead, structure your response beautifully:\n"
+        "   - **Bản chất cốt lõi**: Explain the absolute foundation of the concept using a powerful, vivid real-world analogy "
+        "that anyone can visualize instantly.\n"
+        "   - **Cách thức vận hành & Ví dụ thực tế**: Give concrete, real-world practical scenarios or applications.\n"
+        "   - **Tại sao nó quan trọng**: Highlight the ultimate significance of this concept in its field.\n"
+        "Use engaging, sharp academic yet accessible tone with clear formatting (bullet points, bold text).\n\n"
+        "2. 'dalle_prompt': Write a highly creative, cinematic, and ultra-precise English prompt for DALL-E 3. "
+        "Instead of drawing a generic chart or abstract shapes, design a powerful visual metaphor, educational surreal concept art, "
+        "or a clean architectural infographic that brings the concept to life. "
+        "Strictly command NO unreadable, messy, or garbled text inside the generated image."
+    )
+    
+    ai_completion = client.beta.chat.completions.parse(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": f"Khái niệm cần tra cứu: {khai_niem}"}
+        ],
+        response_format=AIResponseSchema,
+        temperature=0.7
+    )
+    return ai_completion.choices[0].message.parsed
+
+
+# =====================================================================
+# TẦNG 3: ĐIỀU HƯỚNG & KIỂM SOÁT ỨNG DỤNG (CONTROLLER LAYER)
+# =====================================================================
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home")
 def home():
-    # 1. CHỐT CHẶN BẢO MẬT: Bắt buộc đăng nhập
     if 'user_id' not in session:
         return redirect(url_for("login"))
         
     try:
-        # Lấy thông tin user hiện tại từ Supabase
+        # 3.1. Truy vấn thông tin người dùng từ Supabase
         response = supabase.table("users").select("*").eq("id", session['user_id']).execute()
         user_profile = {'role': 'free', 'credits_left': 0}
         credits = 0
+        
         if response.data and len(response.data) > 0:
             user_profile = response.data[0]
             credits = user_profile.get('credits_left', 0)
 
-        # Khởi tạo các giá trị hiển thị ban đầu là rỗng
+        # 3.2. Khởi tạo trạng thái dữ liệu hiển thị ban đầu
         explanation = None
         quiz = None
         image_url = None
         selected_concept = None
 
-        # 2. XỬ LÝ KHI NGƯỜI DÙNG NHẤN NÚT TRA CỨU (POST)
+        # 3.3. Tiếp nhận hành động tìm kiếm (POST)
         if request.method == 'POST':
             selected_concept = request.form.get('concept', '').strip()
             
             if selected_concept:
-                # KIỂM TRA LƯỢT DÙNG: Nếu hết credits thì không cho gọi AI
                 if credits <= 0:
                     explanation = "Bạn đã hết lượt tra cứu miễn phí. Vui lòng nâng cấp tài khoản!"
                 else:
-                    # ---- BƯỚC 1: GỌI GPT-4O RÈNG PROMPT VÀ GIẢI THÍCH ĐA NGÀNH ----
-                    system_instruction = (
-                        "You are an elite cross-disciplinary AI professor. The user will give you a concept "
-                        "from any field (e.g., Finance, Medicine, Psychology, Engineering, Arts, or Tech).\n\n"
-                        "Your job is to generate a JSON response containing two fields:\n"
-                        "1. 'vietnamese_explanation': Explain the concept in Vietnamese. Adapt your tone to be clear, "
-                        "engaging, and rich with practical everyday analogies so non-experts can understand instantly.\n"
-                        "2. 'dalle_prompt': Write a highly creative, vivid, and precise English prompt for DALL-E 3. "
-                        "Instead of a generic chart, design a powerful visual metaphor, educational concept art, "
-                        "or clean modern infographic that brings the core idea to life. Strictly NO unreadable or garbled text inside the image."
-                    )
-                    
-                    # Gọi GPT-4o ép cấu hình JSON Schema (Lưu ý: Phải chắc chắn đã import AIResponseSchema ở trên)
-                    ai_completion = client.beta.chat.completions.parse(
-                        model="gpt-4o",
-                        messages=[
-                            {"role": "system", "content": system_instruction},
-                            {"role": "user", "content": f"Khái niệm cần tra cứu: {selected_concept}"}
-                        ],response_format=AIResponseSchema,
-                        temperature=0.7
-                    )
-                    
-                    # Trích xuất dữ liệu dạng Object an toàn tuyệt đối
-                    structured_data = ai_completion.choices[0].message.parsed
-                    explanation = structured_data.vietnamese_explanation
-                    dalle_prompt = structured_data.dalle_prompt
-
-                    # -----------------------------------------------------------------
-                    # BƯỚC 2: CHUYỂN PROMPT THÔNG MINH SANG CHO DALL-E 3
-                    # -----------------------------------------------------------------
                     try:
+                        # BƯỚC A: Gọi dịch vụ AI Service lấy lời giải thích sâu + Prompt ảnh
+                        structured_data = goi_openai_xu_ly(selected_concept)
+                        explanation = structured_data.vietnamese_explanation
+                        dalle_prompt = structured_data.dalle_prompt
+
+                        # BƯỚC B: Gọi DALL-E 3 sinh ảnh trực quan
                         image_response = client.images.generate(
-                            model="dall-e-3",       # Đã sửa lỗi gõ thừa chữ -e
-                            prompt=dalle_prompt,    # Đã sửa lỗi sai tên biến gạch ngang thành gạch dưới
+                            model="dall-e-3",
+                            prompt=dalle_prompt,
                             n=1,
                             size="1024x1024"
                         )
                         image_url = image_response.data[0].url
-                    except Exception as img_err:
-                        print(f"Lỗi khi gọi DALL-E 3: {img_err}")
-                        image_url = None            # Đã sửa chữ none viết thường thành chuẩn Python None
+                        
+                        # BƯỚC C: GHI LỊCH SỬ VÀO DATABASE SUPABASE
+                        # Giả định bảng lưu lịch sử của bạn tên là 'history' hoặc 'searches'
+                        # Lưu ý: Thay đổi tên bảng và trường cho khớp với Supabase của bạn
+                        history_data = {
+                            "user_id": session['user_id'],
+                            "concept": selected_concept,
+                            "explanation": explanation,
+                            "image_url": image_url
+                        }
+                        supabase.table("history").insert(history_data).execute()
 
-                    # -----------------------------------------------------------------
-                    # BƯỚC 3: CẬP NHẬT DATABASE VÀ ĐỒNG BỘ GIAO DIỆN
-                    # -----------------------------------------------------------------
-                    quiz = f"Câu hỏi ôn tập nhanh cho khái niệm {selected_concept} sẽ xuất hiện tại đây."
-                    
-                    # ĐÃ XÓA dòng "image_url = None" nguy hại làm mất ảnh ở đây!
+                    except Exception as ai_err:
+                        print(f"Lỗi hệ thống AI Service hoặc Lưu lịch sử: {ai_err}")
+                        explanation = "Hệ thống AI đang bận cấu trúc lại dữ liệu hoặc lỗi kết nối. Vui lòng thử lại!"
+                        image_url = None
 
-                    # TRỪ ĐI 1 LƯỢT DÙNG TRONG DATABASE SUPABASE
+                    # BƯỚC D: Tạo câu hỏi ôn tập mẫu và trừ lượt dùng
+                    quiz = f"Câu hỏi ôn tập nhanh cho khái niệm '{selected_concept}' đang được đồng bộ..."
                     new_credits = max(0, credits - 1)
                     supabase.table("users").update({"credits_left": new_credits}).eq("id", session['user_id']).execute()
                     
-                    # Cập nhật lại biến hiển thị ngay trên màn hình hiện tại
                     credits = new_credits
                     user_profile['credits_left'] = new_credits
 
-        # 3. TRẢ DỮ LIỆU ĐÃ XỬ LÝ RA GIAO DIỆN KHÔNG BỊ RỖNG NỮA
+        # =====================================================================
+        # TẦNG 4: ĐỒNG BỘ HIỂN THỊ (PRESENTATION LAYER)
+        # =====================================================================
         return render_template('index.html', 
                                credits=credits, 
                                user_profile=user_profile,
@@ -215,10 +247,14 @@ def home():
                                selected_concept=selected_concept)
         
     except Exception as e:
-        print(f"Lỗi hệ thống tại home: {e}")
-        fake_profile = {'role': 'free', 'credits_left': 0}# Đã tách dòng return rõ ràng bên dưới để tránh lỗi cú pháp
-        return render_template('index.html', credits=0, user_profile=fake_profile, explanation=f"Có lỗi xảy ra: {e}", quiz=None, image_url=None)
-
+        print(f"Lỗi hệ thống nghiêm trọng tại home: {e}")
+        fake_profile = {'role': 'free', 'credits_left': 0}
+        return render_template('index.html', 
+                               credits=0, 
+                               user_profile=fake_profile, 
+                               explanation="Hệ thống đang bảo trì core cấu trúc.", 
+                               quiz=None, 
+                               image_url=None)
     # lấy thông tin thật của người dùng hiện tại
     cur.execute("SELECT role, credits_left FROM users WHERE id = %s;", (user_id,))
     user_profile = cur.fetchone()
