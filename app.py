@@ -161,7 +161,7 @@ def home():
                         "or clean modern infographic that brings the core idea to life. Strictly NO unreadable or garbled text inside the image."
                     )
                      # Gọi GPT-4o ép cấu hình JSON Schema
-                        ai_completion = client.beta.chat.completions.parse(
+                     ai_completion = client.beta.chat.completions.parse(
                         model="gpt-4o",
                         messages=[{"role": "system", "content": system_instruction},
                             {"role": "user", "content": f"Khái niệm cần tra cứu: {selected_concept}"}
