@@ -149,7 +149,7 @@ def home():
                         model="gpt-4o", # Hoặc gpt-4o tùy thuộc API Key của bạn
                         messages=[{"role": "user", "content": prompt}]
                     )
-                    explanation = ai_response.choices[0].message['content'].strip()
+                    explanation = ai_response.choices[0].message.content.strip()
                     
                     # (Tùy chọn) Nếu bạn có code sinh Quiz hoặc Ảnh, bạn thêm logic vào đây
                     quiz = f"Câu hỏi ôn tập nhanh cho khái niệm {selected_concept} sẽ xuất hiện tại đây."
