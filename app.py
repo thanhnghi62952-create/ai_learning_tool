@@ -160,7 +160,8 @@ def home():
                     supabase.table("users").update({"credits_left": new_credits}).eq("id", session['user_id']).execute()
                     
                     # Cập nhật lại biến hiển thị ngay trên màn hình hiện tại
-                    credits = new_creditsuser_profile['credits_left'] = new_credits
+                    credits = new_credits
+                    user_profile['credits_left'] = new_credits
 
         # 3. TRẢ DỮ LIỆU ĐÃ XỬ LÝ RA GIAO DIỆN KHÔNG BỊ RỖNG NỮA
         return render_template('index.html', 
