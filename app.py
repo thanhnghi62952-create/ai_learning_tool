@@ -124,43 +124,41 @@ class AIResponseSchema(BaseModel):
     dalle_prompt: str
 
 
+import json
+
 # =====================================================================
 # TẦNG 2: XỬ LÝ LOGIC AI ĐỘC LẬP (AI SERVICE LAYER)
 # =====================================================================
-def goi_openai_xu_ly(khai_niem: str) -> AIResponseSchema:
+def goi_openai_xu_ly(khai_niem: str) -> dict:
     """
-    Hàm chuyên trách gọi GPT-4o để bóc tách lời giải thích chuyên sâu 
-    và rèn Prompt nghệ thuật cho DALL-E 3.
+    Hàm gọi GPT-4o trả về kết quả cấu trúc JSON dạng thuần túy.
+    Đảm bảo an toàn, không bị lỗi font ký tự.
     """
-    # Nâng cấp kỹ thuật Prompt để AI giải thích bùng nổ, có chiều sâu chuyên gia
     system_instruction = (
-        "You are an elite, world-class cross-disciplinary professor and master storyteller. "
-        "The user will give you a concept from any specialized field (e.g., Quantum Computing, "
-        "Machine Learning, Advanced Finance, Medicine, Psychology, or Philosophy).\n\n"
-        "Your mission is to generate a JSON response with exactly two fields:\n\n"
-        "1. 'vietnamese_explanation': Write a deep, captivating, and highly educational breakdown in Vietnamese. "
-        "DO NOT give a dry, brief dictionary definition. Instead, structure your response beautifully:\n"
-        "   - **Bản chất cốt lõi**: Explain the absolute foundation of the concept using a powerful, vivid real-world analogy "
-        "that anyone can visualize instantly.\n"
-        "   - **Cách thức vận hành & Ví dụ thực tế**: Give concrete, real-world practical scenarios or applications.\n"
-        "   - **Tại sao nó quan trọng**: Highlight the ultimate significance of this concept in its field.\n"
-        "Use engaging, sharp academic yet accessible tone with clear formatting (bullet points, bold text).\n\n"
-        "2. 'dalle_prompt': Write a highly creative, cinematic, and ultra-precise English prompt for DALL-E 3. "
-        "Instead of drawing a generic chart or abstract shapes, design a powerful visual metaphor, educational surreal concept art, "
-        "or a clean architectural infographic that brings the concept to life. "
-        "Strictly command NO unreadable, messy, or garbled text inside the generated image."
+        "You are an elite cross-disciplinary professor and master storyteller.\n"
+        "Your mission is to explain the user's concept in Vietnamese and design an ultra-precise prompt.\n\n"
+        "You MUST respond with a strictly valid JSON object containing exactly two keys:\n"
+        "1. 'vietnamese_explanation': A deep, captivating breakdown in Vietnamese using clean markdown.\n"
+        "2. 'dalle_prompt': An ultra-precise cinematic English prompt visualizing the core concept.\n\n"
+        "Format your JSON output exactly like this:\n"
+        "{\n"
+        "  \"vietnamese_explanation\": \"...\",\n"
+        "  \"dalle_prompt\": \"...\"\n"
+        "}"
     )
     
-    ai_completion = client.beta.chat.completions.parse(
+    response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system_instruction},
             {"role": "user", "content": f"Khái niệm cần tra cứu: {khai_niem}"}
         ],
-        response_format=AIResponseSchema,
-        temperature=0.7
+        response_format={"type": "json_object"},
+        temperature=0.3
     )
-    return ai_completion.choices[0].message.parsed
+    
+    content_string = response.choices[0].message.content
+    return json.loads(content_string)
 
 
 # =====================================================================
@@ -173,22 +171,20 @@ def home():
         return redirect(url_for("login"))
         
     try:
-        # 3.1. Truy vấn thông tin người dùng từ Supabase
-        response = supabase.table("users").select("*").eq("id", session['user_id']).execute()
+        # Lấy thông tin người dùng từ Supabase
+        res = supabase.table("users").select("*").eq("id", session['user_id']).execute()
         user_profile = {'role': 'free', 'credits_left': 0}
         credits = 0
         
-        if response.data and len(response.data) > 0:
-            user_profile = response.data[0]
+        if res.data and len(res.data) > 0:
+            user_profile = res.data[0]
             credits = user_profile.get('credits_left', 0)
 
-        # 3.2. Khởi tạo trạng thái dữ liệu hiển thị ban đầu
         explanation = None
         quiz = None
         image_url = None
         selected_concept = None
 
-        # 3.3. Tiếp nhận hành động tìm kiếm (POST)
         if request.method == 'POST':
             selected_concept = request.form.get('concept', '').strip()
             
@@ -196,52 +192,55 @@ def home():
                 if credits <= 0:
                     explanation = "Bạn đã hết lượt tra cứu miễn phí. Vui lòng nâng cấp tài khoản!"
                 else:
+                    # BƯỚC 1: Gọi GPT-4o lấy nội dung giải thích và prompt ảnh
                     try:
-                        # BƯỚC A: Gọi dịch vụ AI Service lấy lời giải thích sâu + Prompt ảnh
-                        structured_data = goi_openai_xu_ly(selected_concept)
-                        explanation = structured_data.vietnamese_explanation
-                        dalle_prompt = structured_data.dalle_prompt
-
-                        # BƯỚC B: Gọi DALL-E 3 sinh ảnh trực quan
-                        image_response = client.images.generate(
-                            model="gpt-image",
-                            prompt=dalle_prompt,
-                            n=1,
-                            size="1024x1024"
-                        )
-                        image_url = image_response.data[0].url
-                        
-                        # BƯỚC C: GHI LỊCH SỬ VÀO DATABASE SUPABASE
-                        # Giả định bảng lưu lịch sử của bạn tên là 'history' hoặc 'searches'
-                        # Lưu ý: Thay đổi tên bảng và trường cho khớp với Supabase của bạn
-                        history_data = {
-                            "user_id": session['user_id'],
-                            "concept": selected_concept,
-                            "explanation": explanation,
-                            "image_url": image_url
-                        }
-                        supabase.table("history").insert(history_data).execute()
-
+                        data_dict = goi_openai_xu_ly(selected_concept)explanation = data_dict.get('vietnamese_explanation', '')
+                        dalle_prompt = data_dict.get('dalle_prompt', '')
                     except Exception as ai_err:
-                        print(f"Lỗi hệ thống AI Service hoặc Lưu lịch sử: {ai_err}")
-                        explanation = "Hệ thống AI đang bận cấu trúc lại dữ liệu hoặc lỗi kết nối. Vui lòng thử lại!"
-                        image_url = None
+                        print(f"Lỗi Core GPT-4o: {ai_err}")
+                        explanation = "Không thể kết nối với dịch vụ trí tuệ nhân tạo. Vui lòng thử lại!"
+                        dalle_prompt = None
 
-                    # BƯỚC D: Tạo câu hỏi ôn tập mẫu và trừ lượt dùng
-                    quiz = f"Câu hỏi ôn tập nhanh cho khái niệm '{selected_concept}' đang được đồng bộ..."
-                    new_credits = max(0, credits - 1)
-                    supabase.table("users").update({"credits_left": new_credits}).eq("id", session['user_id']).execute()
-                    
-                    credits = new_credits
-                    user_profile['credits_left'] = new_credits
+                    # BƯỚC 2: Gọi gpt-image sinh ảnh an toàn (Bọc trong try-except tuyệt đối)
+                    if dalle_prompt:
+                        try:
+                            image_response = client.images.generate(
+                                model="gpt-image",
+                                prompt=dalle_prompt,
+                                n=1,
+                                size="1024x1024"
+                            )
+                            image_url = image_response.data[0].url
+                            print(f"--> Sinh ảnh gpt-image thành công: {image_url}")
+                        except Exception as img_err:
+                            # Nếu model gpt-image bị OpenAI từ chối endpoint, tự động dùng link dự phòng chất lượng cao
+                            print(f"Lỗi endpoint gpt-image (Kích hoạt link dự phòng): {img_err}")
+                            clean_keyword = selected_concept.lower().replace(' ', ',')
+                            image_url = f"https://image.pollinations.ai/p/{clean_keyword}?width=1024&height=1024&nologo=true"
 
-        # =====================================================================
-        # TẦNG 4: ĐỒNG BỘ HIỂN THỊ (PRESENTATION LAYER)
-        # =====================================================================
+                    # BƯỚC 3: Ghi nhận lịch sử và khấu trừ lượt dùng (Credits)
+                    if explanation and ("Không thể kết nối" not in explanation) and ("hết lượt tra cứu" not in explanation):
+                        try:
+                            history_data = {
+                                "user_id": session['user_id'],
+                                "concept": selected_concept,
+                                "explanation": explanation,
+                                "image_url": image_url
+                            }
+                            supabase.table("history").insert(history_data).execute()
+                        except Exception as db_err:
+                            print(f"Lỗi lưu Supabase: {db_err}")
+
+                        quiz = f"Câu hỏi ôn tập nhanh cho khái niệm '{selected_concept}' đã sẵn sàng."
+                        new_credits = max(0, credits - 1)
+                        supabase.table("users").update({"credits_left": new_credits}).eq("id", session['user_id']).execute()
+                        
+                        credits = new_credits
+                        user_profile['credits_left'] = new_credits
+
         return render_template('index.html', 
                                credits=credits, 
-                               user_profile=user_profile,
-                               explanation=explanation, 
+                               user_profile=user_profile,explanation=explanation, 
                                quiz=quiz, 
                                image_url=image_url, 
                                selected_concept=selected_concept)
@@ -249,12 +248,7 @@ def home():
     except Exception as e:
         print(f"Lỗi hệ thống nghiêm trọng tại home: {e}")
         fake_profile = {'role': 'free', 'credits_left': 0}
-        return render_template('index.html', 
-                               credits=0, 
-                               user_profile=fake_profile, 
-                               explanation="Hệ thống đang bảo trì core cấu trúc.", 
-                               quiz=None, 
-                               image_url=None)
+        return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối.", quiz=None, image_url=None)
     # lấy thông tin thật của người dùng hiện tại
     cur.execute("SELECT role, credits_left FROM users WHERE id = %s;", (user_id,))
     user_profile = cur.fetchone()
