@@ -194,7 +194,8 @@ def home():
                 else:
                     # BƯỚC 1: Gọi GPT-4o lấy nội dung giải thích và prompt ảnh
                     try:
-                        data_dict = goi_openai_xu_ly(selected_concept)explanation = data_dict.get('vietnamese_explanation', '')
+                        data_dict = goi_openai_xu_ly(selected_concept)
+                        explanation = data_dict.get('vietnamese_explanation', '')
                         dalle_prompt = data_dict.get('dalle_prompt', '')
                     except Exception as ai_err:
                         print(f"Lỗi Core GPT-4o: {ai_err}")
