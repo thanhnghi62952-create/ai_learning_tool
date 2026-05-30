@@ -204,7 +204,7 @@ def home():
 
                         # BƯỚC B: Gọi DALL-E 3 sinh ảnh trực quan
                         image_response = client.images.generate(
-                            model="dall-e-3",
+                            model="gpt-image",
                             prompt=dalle_prompt,
                             n=1,
                             size="1024x1024"
