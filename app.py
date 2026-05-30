@@ -1,6 +1,8 @@
 import json
 from pydantic import BaseModel
 import os
+import base64
+import requests
 from openai import OpenAI
 from flask import Flask, render_template, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -23,6 +25,10 @@ supabase: Client = create_client(supabase_url, supabase_key)
 class AIResponseSchema(BaseModel):
     vietnamese_explanation: str
     dalle_prompt: str
+
+#khởi tạo api key của Stability từ môi trường render bảo mật
+STABILITY_API_KEY = os.environ.get("STABILITY_API_KEY")
+
 
 
 #def get_db_connection():
@@ -124,22 +130,26 @@ class AIResponseSchema(BaseModel):
     dalle_prompt: str
 
 
-import json
+
 
 # =====================================================================
-# TẦNG 2: XỬ LÝ LOGIC AI ĐỘC LẬP (AI SERVICE LAYER)
+# TẦNG 2: XỬ LÝ LOGIC AI ĐỘC LẬP (AI SERVICE LAYER) - STABILITY AI INTEGRATION
 # =====================================================================
 def goi_openai_xu_ly(khai_niem: str) -> dict:
     """
-    Hàm gọi GPT-4o trả về kết quả cấu trúc JSON dạng thuần túy.
-    Đảm bảo an toàn, không bị lỗi font ký tự.
+    Hàm gọi GPT-4o lấy lời giải thích tiếng Việt và rèn Prompt 3D Infographics 
+    chuẩn hóa cấu trúc dành riêng cho mô hình vẽ của Stability AI.
     """
     system_instruction = (
         "You are an elite cross-disciplinary professor and master storyteller.\n"
         "Your mission is to explain the user's concept in Vietnamese and design an ultra-precise prompt.\n\n"
+        "CRITICAL INSTRUCTION FOR 'dalle_prompt':\n"
+        "- Think like a professional graphic designer. Design a clean, educational visual concept.\n"
+        "- Use the formula: 'A clean modern 3D vector illustration of [Main Subject], isometric style, vibrant corporate tech colors, white solid background, sharp details, textbook infographic aesthetic.'\n"
+        "- Avoid text, messy details, or realistic human photorealism unless requested.\n\n"
         "You MUST respond with a strictly valid JSON object containing exactly two keys:\n"
         "1. 'vietnamese_explanation': A deep, captivating breakdown in Vietnamese using clean markdown.\n"
-        "2. 'dalle_prompt': An ultra-precise cinematic English prompt visualizing the core concept.\n\n"
+        "2. 'dalle_prompt': The highly specific, descriptive English prompt following the rules above.\n\n"
         "Format your JSON output exactly like this:\n"
         "{\n"
         "  \"vietnamese_explanation\": \"...\",\n"
@@ -159,6 +169,50 @@ def goi_openai_xu_ly(khai_niem: str) -> dict:
     
     content_string = response.choices[0].message.content
     return json.loads(content_string)
+
+
+def goi_stability_sinh_anh(prompt_text: str) -> str:
+    """
+    Hàm gọi API Stability AI (Mô hình SDXL 1.0) để tạo ảnh chất lượng cao.
+    Trả về chuỗi Base64 Data URL để hiển thị trực tiếp trên Frontend.
+    """
+    if not STABILITY_API_KEY:
+        print("Lỗi: Chưa cấu hình biến môi trường STABILITY_API_KEY trên Render!")
+        return None
+
+    url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
+    
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {STABILITY_API_KEY}"
+    }
+    
+    payload = {
+        "text_prompts": [
+            {
+                "text": prompt_text,
+                "weight": 1.0}
+        ],
+        "cfg_scale": 7,
+        "height": 1024,
+        "width": 1024,
+        "samples": 1,
+        "steps": 30,
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    
+    if response.status_code != 200:
+        print(f"Lỗi API Stability ({response.status_code}): {response.text}")
+        return None
+        
+    data = response.json()
+    # Trích xuất chuỗi base64 của tấm ảnh đầu tiên từ mảng trả về
+    base64_string = data["artifacts"][0]["base64"]
+    
+    # Tạo chuỗi Data URL chuẩn để thẻ <img src="..."> ở Frontend đọc được trực tiếp
+    image_data_url = f"data:image/png;base64,{base64_string}"
+    return image_data_url
 
 
 # =====================================================================
@@ -192,45 +246,37 @@ def home():
                 if credits <= 0:
                     explanation = "Bạn đã hết lượt tra cứu miễn phí. Vui lòng nâng cấp tài khoản!"
                 else:
-                    # BƯỚC 1: Gọi GPT-4o lấy nội dung giải thích và prompt ảnh
+                    # BƯỚC 1: Gọi GPT-4o phân tích chữ và dựng prompt đồ họa
                     try:
                         data_dict = goi_openai_xu_ly(selected_concept)
                         explanation = data_dict.get('vietnamese_explanation', '')
                         dalle_prompt = data_dict.get('dalle_prompt', '')
                     except Exception as ai_err:
-                        print(f"Lỗi Core GPT-4o: {ai_err}")
+                        print(f"Lỗi hệ thống Core GPT-4o: {ai_err}")
                         explanation = "Không thể kết nối với dịch vụ trí tuệ nhân tạo. Vui lòng thử lại!"
                         dalle_prompt = None
 
-                    # BƯỚC 2: Gọi gpt-image sinh ảnh an toàn (Bọc trong try-except tuyệt đối)
+                    # BƯỚC 2: Gọi Stability AI vẽ ảnh sắc nét (Giải pháp thay thế vĩnh viễn ảnh ngu)
                     if dalle_prompt:
                         try:
-                            image_response = client.images.generate(
-                                model="gpt-image",
-                                prompt=dalle_prompt,
-                                n=1,
-                                size="1024x1024"
-                            )
-                            image_url = image_response.data[0].url
-                            print(f"--> Sinh ảnh gpt-image thành công: {image_url}")
-                        except Exception as img_err:
-                            # Nếu model gpt-image bị OpenAI từ chối endpoint, tự động dùng link dự phòng chất lượng cao
-                            print(f"Lỗi endpoint gpt-image (Kích hoạt link dự phòng): {img_err}")
-                            clean_keyword = selected_concept.lower().replace(' ', ',')
-                            image_url = f"https://image.pollinations.ai/p/{clean_keyword}?width=1024&height=1024&nologo=true"
+                            image_url = goi_stability_sinh_anh(dalle_prompt)
+                            if image_url:
+                                print("--> Sinh ảnh bằng Stability AI (SDXL) thành công!")except Exception as img_err:
+                            print(f"Lỗi xử lý luồng ảnh Stability: {img_err}")
+                            image_url = None
 
-                    # BƯỚC 3: Ghi nhận lịch sử và khấu trừ lượt dùng (Credits)
+                    # BƯỚC 3: Đồng bộ lịch sử dữ liệu và cập nhật Credits
                     if explanation and ("Không thể kết nối" not in explanation) and ("hết lượt tra cứu" not in explanation):
                         try:
                             history_data = {
                                 "user_id": session['user_id'],
                                 "concept": selected_concept,
                                 "explanation": explanation,
-                                "image_url": image_url
+                                "image_url": image_url # Chuỗi Base64 Data URL sẽ được lưu trực tiếp vào Supabase cực an toàn
                             }
                             supabase.table("history").insert(history_data).execute()
                         except Exception as db_err:
-                            print(f"Lỗi lưu Supabase: {db_err}")
+                            print(f"Lỗi ghi lịch sử vào Supabase: {db_err}")
 
                         quiz = f"Câu hỏi ôn tập nhanh cho khái niệm '{selected_concept}' đã sẵn sàng."
                         new_credits = max(0, credits - 1)
@@ -241,7 +287,8 @@ def home():
 
         return render_template('index.html', 
                                credits=credits, 
-                               user_profile=user_profile,explanation=explanation, 
+                               user_profile=user_profile,
+                               explanation=explanation, 
                                quiz=quiz, 
                                image_url=image_url, 
                                selected_concept=selected_concept)
@@ -249,7 +296,7 @@ def home():
     except Exception as e:
         print(f"Lỗi hệ thống nghiêm trọng tại home: {e}")
         fake_profile = {'role': 'free', 'credits_left': 0}
-        return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối.", quiz=None, image_url=None)
+        return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối dữ liệu.", quiz=None, image_url=None)
     # lấy thông tin thật của người dùng hiện tại
     cur.execute("SELECT role, credits_left FROM users WHERE id = %s;", (user_id,))
     user_profile = cur.fetchone()
