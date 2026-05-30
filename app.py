@@ -261,7 +261,8 @@ def home():
                         try:
                             image_url = goi_stability_sinh_anh(dalle_prompt)
                             if image_url:
-                                print("--> Sinh ảnh bằng Stability AI (SDXL) thành công!")except Exception as img_err:
+                                print("--> Sinh ảnh bằng Stability AI (SDXL) thành công!")
+                        except Exception as img_err:
                             print(f"Lỗi xử lý luồng ảnh Stability: {img_err}")
                             image_url = None
 
