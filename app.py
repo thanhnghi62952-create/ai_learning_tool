@@ -92,7 +92,7 @@ def goi_stability_sinh_anh(prompt_text: str, so_lan_thu_lai: int = 2) -> str:
     for i in range(so_lan_thu_lai + 1):
         try:
             print(f"--> [Lần thử {i+1}] Đang gửi yêu cầu vẽ ảnh SD3 tới Stability AI...")
-            # Gửi đa phần dữ liệu (multipart/form-data) theo đúng chuẩn tài liệu Stability v2beta
+            # Gửi dữ liệu theo dạng multipart/form-data chuẩn tài liệu Stability v2beta
             response = requests.post(url, headers=headers, files={"none": (None, "")}, data=payload, timeout=25)
             
             if response.status_code == 200:
@@ -153,7 +153,7 @@ def home():
                     # BƯỚC 1: Gọi GPT-4o phân tích dữ liệu văn bản
                     try:
                         data_dict = goi_openai_xu_ly(selected_concept)
-                        # ĐÃ SỬA LỖI DÍNH DÒNG (SYNTAX ERROR TÁCH BIẾN HOÀN TOÀN)
+                        # ĐÃ SỬA LỖI DÍNH DÒNG CHÍ MẠNG
                         explanation = data_dict.get('vietnamese_explanation', '')
                         dalle_prompt = data_dict.get('dalle_prompt', '')
                     except Exception as ai_err:
@@ -207,7 +207,7 @@ def home():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     """
-    ĐỊNH TUYẾN ĐĂNG NHẬP (Sửa lỗi BuildError 'Could not build url for endpoint login')
+    ĐỊNH TUYẾN ĐĂNG NHẬP (Sửa lỗi BuildError cho endpoint 'login')
     """
     if request.method == "POST":
         email = request.form.get("email")
@@ -232,5 +232,4 @@ def logout():
 
 
 if __name__ == "__main__":
-    # Chạy ứng dụng trên cổng 10000 phù hợp cấu hình mặc định Render
     app.run(host="0.0.0.0", port=10000, debug=True)
