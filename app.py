@@ -26,127 +26,24 @@ class AIResponseSchema(BaseModel):
     vietnamese_explanation: str
     dalle_prompt: str
 
-#khởi tạo api key của Stability từ môi trường render bảo mật
+# Khởi tạo API Key của Stability từ môi trường Render bảo mật
 STABILITY_API_KEY = os.environ.get("STABILITY_API_KEY")
 
-
-
-#def get_db_connection():
-    #db_url = os.environ.get("DATABASE_URL")
-   # return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
-
-# ==================== LUỒNG XỬ LÝ ĐĂNG KÝ (REGISTER) ====================
-@app.route('/register', methods=['POST'])
-def register():
-    email = request.form.get('email', '').strip()
-    password = request.form.get('password', '')
-
-    if not email or not password:
-        return render_template("auth.html", error="Vui lòng điền đầy đủ email và mật khẩu.")
-
-    try:
-        # 1. Gọi tính năng Auth tích hợp sẵn của Supabase để tạo tài khoản tài khoản bảo mật
-        response = supabase.auth.sign_up({
-            "email": email,
-            "password": password
-        })
-        
-        # 2. Nếu đăng ký bên Supabase Auth thành công
-        if response.user:
-            # Lấy ID độc nhất mà Supabase vừa sinh ra cho user này
-            supabase_user_id = response.user.id 
-            
-            # 3. Thay thế cho lệnh INSERT INTO cũ bằng lệnh API siêu sạch:
-            # Chèn thông tin vào bảng 'users', tặng sẵn 5 lượt dùng miễn phí
-            supabase.table("users").insert({
-                "id": supabase_user_id, # Lưu ý: Nên lưu ID này để đồng bộ với Auth
-                "email": email,
-                "role": "free",
-                "credits_left": 5
-            }).execute()
-
-            # 4. Lưu thông tin đăng nhập vào Session của Flask để giữ trạng thái đăng nhập
-            session['user_id'] = supabase_user_id
-            session['user_email'] = email
-            
-            # 5. Đăng ký xong xuôi, đưa người dùng thẳng vào trang chủ Dashboard
-            return redirect(url_for('home'))
-            
-    except Exception as e:
-        # Bắt mọi loại lỗi (trùng email, mật khẩu yếu, lỗi hệ thống) và hiển thị lên giao diện
-        error_msg = str(e)
-        if "already registered" in error_msg.lower() or "unique" in error_msg.lower():
-            return render_template("auth.html", error="Email này đã được đăng ký trên hệ thống.")
-        return render_template("auth.html", error=f"Lỗi hệ thống: {error_msg}")
-# ==================== LUỒNG XỬ LÝ ĐĂNG NHẬP (LOGIN) ====================
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "GET":
-        return render_template("auth.html")
-
-    email = request.form.get("email", "").strip()
-    password = request.form.get("password", "")
-
-    if not email or not password:
-        return render_template("auth.html", error="Vui lòng điền đầy đủ email và mật khẩu.")
-
-    try:
-        # 1. Gọi API Supabase Auth để xác thực email và mật khẩu người dùng nhập vào
-        response = supabase.auth.sign_in_with_password({
-            "email": email,
-            "password": password
-        })
-
-        # 2. Nếu thông tin chính xác, Supabase sẽ trả về đối tượng user hợp lệ
-        if response.user:
-            # Lưu ID độc nhất của Supabase và Email vào Session của Flask để giữ trạng thái đăng nhập
-            session['user_id'] = response.user.id
-            session['user_email'] = response.user.email
-            
-            # 3. Đăng nhập thành công, đưa người dùng thẳng vào trang Dashboard (hoặc home tùy bạn cấu hình)
-            return redirect(url_for("home"))
-            
-    except Exception as e:
-        # Bộ máy Supabase Auth sẽ tự động ném ra lỗi nếu sai mật khẩu hoặc sai email
-        error_msg = str(e)
-        
-        # Bắt các từ khóa lỗi phổ biến để hiển thị câu thông báo tiếng Việt thân thiện
-        if "invalid login credentials" in error_msg.lower():
-            return render_template("auth.html", error="Email hoặc mật khẩu không chính xác.")
-        
-        return render_template("auth.html", error=f"Lỗi hệ thống: {error_msg}")
-# ==================== LUỒNG ĐĂNG XUẤT (LOGOUT) ====================
-@app.route("/logout")
-def logout():
-    session.clear() # Xóa sạch cookie phiên làm việc
-    return redirect(url_for("login"))
-
-
 # =====================================================================
-# TẦNG 1: ĐỊNH NGHĨA CẤU TRÚC DỮ LIỆU ĐẦU RA (DATA SCHEMA LAYER)
-# =====================================================================
-class AIResponseSchema(BaseModel):
-    vietnamese_explanation: str
-    dalle_prompt: str
-
-
-
-
-# =====================================================================
-# TẦNG 2: XỬ LÝ LOGIC AI ĐỘC LẬP (AI SERVICE LAYER) - STABILITY AI INTEGRATION
+# TẦNG 2: XỬ LÝ LOGIC AI ĐỘC LẬP (AI SERVICE LAYER) - STABILITY AI SD3
 # =====================================================================
 def goi_openai_xu_ly(khai_niem: str) -> dict:
     """
-    Hàm gọi GPT-4o lấy lời giải thích tiếng Việt và rèn Prompt 3D Infographics 
-    chuẩn hóa cấu trúc dành riêng cho mô hình vẽ của Stability AI.
+    Hàm gọi GPT-4o lấy lời giải thích tiếng Việt và rèn Prompt khoa học 
+    đặc tả cấu trúc thiết kế dành riêng cho mô hình cao cấp Stable Diffusion 3.
     """
     system_instruction = (
         "You are an elite cross-disciplinary professor and master storyteller.\n"
         "Your mission is to explain the user's concept in Vietnamese and design an ultra-precise prompt.\n\n"
         "CRITICAL INSTRUCTION FOR 'dalle_prompt':\n"
-        "- Think like a professional graphic designer. Design a clean, educational visual concept.\n"
-        "- Use the formula: 'A clean modern 3D vector illustration of [Main Subject], isometric style, vibrant corporate tech colors, white solid background, sharp details, textbook infographic aesthetic.'\n"
-        "- Avoid text, messy details, or realistic human photorealism unless requested.\n\n"
+        "- Think like a professional professional infographic designer.\n"
+        "- Use the formula: 'A clean modern 3D vector illustration of [Main Subject], isometric style, corporate tech colors, white solid background, sharp focus, textbook diagram aesthetic.'\n"
+        "- Keep it clean, minimal, and highly professional.\n\n"
         "You MUST respond with a strictly valid JSON object containing exactly two keys:\n"
         "1. 'vietnamese_explanation': A deep, captivating breakdown in Vietnamese using clean markdown.\n"
         "2. 'dalle_prompt': The highly specific, descriptive English prompt following the rules above.\n\n"
@@ -171,48 +68,59 @@ def goi_openai_xu_ly(khai_niem: str) -> dict:
     return json.loads(content_string)
 
 
-def goi_stability_sinh_anh(prompt_text: str) -> str:
+def goi_stability_sinh_anh(prompt_text: str, so_lan_thu_lai: int = 2) -> str:
     """
-    Hàm gọi API Stability AI (Mô hình SDXL 1.0) để tạo ảnh chất lượng cao.
-    Trả về chuỗi Base64 Data URL để hiển thị trực tiếp trên Frontend.
+    Hàm gọi API Stability AI thế hệ mới (Mô hình Stable Diffusion 3 - SD3) 
+    Tích hợp cơ chế tự động thử lại (Retry) bảo vệ hệ thống khỏi lỗi nghẽn mạng 504.
     """
     if not STABILITY_API_KEY:
         print("Lỗi: Chưa cấu hình biến môi trường STABILITY_API_KEY trên Render!")
         return None
 
-    url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
+    # Đổi sang Endpoint Core dịch vụ mới nhất của Stability AI (Hỗ trợ SD3 / SD3 Medium)
+    url = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
     
     headers = {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {STABILITY_API_KEY}"
+        "Authorization": f"Bearer {STABILITY_API_KEY}",
+        "Accept": "application/json"  # Nhận kết quả trả về trực tiếp dưới dạng JSON chứa Base64
     }
     
+    # Cấu hình form dữ liệu chuẩn cho API v2beta
     payload = {
-        "text_prompts": [
-            {
-                "text": prompt_text,
-                "weight": 1.0}
-        ],
-        "cfg_scale": 7,
-        "height": 1024,
-        "width": 1024,
-        "samples": 1,
-        "steps": 30,
+        "prompt": prompt_text,
+        "output_format": "png",
+        "model": "sd3-medium", # Sử dụng dòng mô hình SD3 cân bằng tuyệt vời giữa tốc độ và trí thông minh
+        "aspect_ratio": "1:1"
     }
 
-    response = requests.post(url, headers=headers, json=payload)
-    
-    if response.status_code != 200:
-        print(f"Lỗi API Stability ({response.status_code}): {response.text}")
-        return None
-        
-    data = response.json()
-    # Trích xuất chuỗi base64 của tấm ảnh đầu tiên từ mảng trả về
-    base64_string = data["artifacts"][0]["base64"]
-    
-    # Tạo chuỗi Data URL chuẩn để thẻ <img src="..."> ở Frontend đọc được trực tiếp
-    image_data_url = f"data:image/png;base64,{base64_string}"
-    return image_data_url
+    for i in range(so_lan_thu_lai + 1):
+        try:
+            print(f"--> [Lần thử {i+1}] Đang gửi yêu cầu vẽ ảnh SD3 tới Stability AI...")
+            # Sử dụng files thay vì json cho endpoint v2beta của Stability
+            response = requests.post(url, headers=headers, files={"none": (None, "")}, data=payload, timeout=25)
+            
+            if response.status_code == 200:
+                data = response.json()
+                base64_string = data.get("image")
+                if base64_string:
+                    print("--> Sinh ảnh bằng Stability AI SD3 thành công xuất sắc!")
+                    return f"data:image/png;base64,{base64_string}"
+            
+            elif response.status_code in [502, 503, 504]:
+                print(f"Máy chủ Stability nghẽn mạch ({response.status_code}). Đang chờ dữ liệu...")
+                time.sleep(3)
+            else:
+                print(f"Lỗi API Stability ({response.status_code}): {response.text}")
+                break
+        except requests.exceptions.Timeout:
+            print("--> Yêu cầu xử lý ảnh bị Timeout hành trình. Đang thử lại...")
+            time.sleep(2)
+        except Exception as e:
+            print(f"Trục trặc đường truyền kết nối: {e}")
+            break
+            
+    print("❌ Sự cố nghẽn mạng diện rộng từ phía đối tác. Kích hoạt sơ đồ cứu hộ.")
+    return None
 
 
 # =====================================================================
@@ -246,7 +154,7 @@ def home():
                 if credits <= 0:
                     explanation = "Bạn đã hết lượt tra cứu miễn phí. Vui lòng nâng cấp tài khoản!"
                 else:
-                    # BƯỚC 1: Gọi GPT-4o phân tích chữ và dựng prompt đồ họa
+                    # BƯỚC 1: Gọi GPT-4o phân tích (ĐÃ SỬA LỖI DÍNH DÒNG SYNTAX ERROR)
                     try:
                         data_dict = goi_openai_xu_ly(selected_concept)
                         explanation = data_dict.get('vietnamese_explanation', '')
@@ -256,24 +164,23 @@ def home():
                         explanation = "Không thể kết nối với dịch vụ trí tuệ nhân tạo. Vui lòng thử lại!"
                         dalle_prompt = None
 
-                    # BƯỚC 2: Gọi Stability AI vẽ ảnh sắc nét (Giải pháp thay thế vĩnh viễn ảnh ngu)
+                    # BƯỚC 2: Gọi Stability AI SD3 sinh ảnh thông minh
                     if dalle_prompt:
-                        try:
-                            image_url = goi_stability_sinh_anh(dalle_prompt)
-                            if image_url:
-                                print("--> Sinh ảnh bằng Stability AI (SDXL) thành công!")
-                        except Exception as img_err:
-                            print(f"Lỗi xử lý luồng ảnh Stability: {img_err}")
-                            image_url = None
+                        image_url = goi_stability_sinh_anh(dalle_prompt)
+                        
+                        # Hàng rào bảo vệ: Nếu API bên thứ ba lỗi sập, tự động cấp ảnh minh họa sơ đồ thay thế để giữ giao diện đẹp
+                        if not image_url:
+                            clean_keyword = selected_concept.lower().replace(' ', ',')
+                            image_url = f"https://image.pollinations.ai/p/{clean_keyword}?width=1024&height=1024&nologo=true"
 
-                    # BƯỚC 3: Đồng bộ lịch sử dữ liệu và cập nhật Credits
+                    # BƯỚC 3: Đồng bộ lịch sử dữ liệu xuống Supabase
                     if explanation and ("Không thể kết nối" not in explanation) and ("hết lượt tra cứu" not in explanation):
                         try:
                             history_data = {
-                                "user_id": session['user_id'],
+                                "user_id": session['user_id'], 
                                 "concept": selected_concept,
                                 "explanation": explanation,
-                                "image_url": image_url # Chuỗi Base64 Data URL sẽ được lưu trực tiếp vào Supabase cực an toàn
+                                "image_url": image_url
                             }
                             supabase.table("history").insert(history_data).execute()
                         except Exception as db_err:
@@ -298,6 +205,8 @@ def home():
         print(f"Lỗi hệ thống nghiêm trọng tại home: {e}")
         fake_profile = {'role': 'free', 'credits_left': 0}
         return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối dữ liệu.", quiz=None, image_url=None)
+
+
     # lấy thông tin thật của người dùng hiện tại
     cur.execute("SELECT role, credits_left FROM users WHERE id = %s;", (user_id,))
     user_profile = cur.fetchone()
