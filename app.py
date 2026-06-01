@@ -29,41 +29,64 @@ STABILITY_API_KEY = os.environ.get("STABILITY_API_KEY")
 # =====================================================================
 # TẦNG 2: XỬ LÝ LOGIC AI ĐỘC LẬP (AI SERVICE LAYER)
 # =====================================================================
-def goi_openai_xu_ly(khai_niem: str) -> dict:
+def goi_openai_xu_ly(khai_niem: str, user_level: str = "beginner") -> dict:
     """
-    Hàm gọi GPT-4o lấy lời giải thích tiếng Việt và xây dựng Prompt đồ họa 
-    khoa học chuẩn cấu trúc dành riêng cho mô hình cao cấp Stable Diffusion 3.
+    Hàm xử lý trí tuệ nhân tạo nâng cao áp dụng Prompt Taxonomy.
+    user_level: có thể truyền từ session hoặc database (beginner, intermediate, advanced)
     """
-    system_instruction = (
-        "You are an elite cross-disciplinary professor and master storyteller.\n"
-        "Your mission is to explain the user's concept in Vietnamese and design an ultra-precise prompt.\n\n"
-        "CRITICAL INSTRUCTION FOR 'dalle_prompt':\n"
-        "- Think like a professional infographic designer.\n"
-        "- Use the formula: 'A clean modern 3D vector illustration of [Main Subject], isometric style, corporate tech colors, white solid background, sharp focus, textbook diagram aesthetic.'\n"
-        "- Keep it clean, minimal, and highly professional.\n\n"
-        "You MUST respond with a strictly valid JSON object containing exactly two keys:\n"
-        "1. 'vietnamese_explanation': A deep, captivating breakdown in Vietnamese using clean markdown.\n"
-        "2. 'dalle_prompt': The highly specific, descriptive English prompt following the rules above.\n\n"
-        "Format your JSON output exactly like this:\n"
-        "{\n"
-        "  \"vietnamese_explanation\": \"...\",\n"
-        "  \"dalle_prompt\": \"...\"\n"
-        "}"
-    )
     
+    system_instruction = f"""
+    You are an AI Educational Architect and Master Graphic Designer. Your job is to create a personalized teaching plan and design the perfect visual prompt for an image generation AI (Stable Diffusion 3).
+
+    CONTEXT:
+    - User Learning Level: {user_level}
+    - Concept to explain: {khai_niem}
+
+    --- TAXONOMY STEP 1: USER EMPATHY ANALYSIS ---
+    Analyze where the user might struggle with this concept based on their level ({user_level}). 
+    - If Beginner: They struggle with technical jargon, abstract mathematics, and 'the big picture'.
+    - If Advanced: They struggle with edge cases, architectural trade-offs, and deep system mechanics.
+
+    --- TAXONOMY STEP 2: PEDAGOGICAL TEACHING PLAN ---
+    Create a structured 3-step teaching plan tailored to their level:
+    1. Intuitive Analogy (For beginners) or Core Principle (For advanced).
+    2. Deep Technical Breakdown (Clean Markdown).
+    3. Quick Retention Quiz question.
+
+    --- TAXONOMY STEP 3: VISUAL CLASSIFICATION & DECISION ---
+    Analyze the nature of the concept to choose the correct image style:
+    - STYLE A: SYSTEM DIAGRAM (For structural, multi-step, or architectural concepts like Neural Networks, Databases, Protocols).
+      * Aesthetic: Modern 3D isometric blueprint, clean vector flowchart, connective nodes, corporate tech colors, white background.
+    - STYLE B: VISUAL METAPHOR / ABSTRACT CONCEPTUAL (For invisible, psychological, or non-physical concepts like Inflation, Deep Work, Recursion).
+      * Aesthetic: A concrete physical object acting as a metaphor, high-concept 3D rendering, surreal yet clean art style, corporate tech colors, white background.
+
+    CRITICAL IMAGE RULE: Absolutely NO text, letters, or labels inside the image.
+
+    YOUR OUTPUT MUST BE A STRICT JSON OBJECT WITH THESE EXACT KEYS:
+    {{
+      "user_struggle_analysis": "Brief analysis of what the user finds difficult about this concept",
+      "visual_style_chosen": "SYSTEM_DIAGRAM or VISUAL_METAPHOR based on the concept nature",
+      "teaching_plan": {{
+        "analogy": "A relatable real-world comparison",
+        "detailed_explanation": "The core textbook explanation in Vietnamese with clean markdown",
+        "quiz": "A dynamic multiple choice question to test understanding"
+      }},
+      "stability_prompt": "The exact English prompt following the chosen visual style (A or B), forced on a solid white background, ultra-clear educational asset look."
+    }}
+    """
+
+    # Luồng gọi OpenAI Chat Completion giữ nguyên...
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system_instruction},
-            {"role": "user", "content": f"Khái niệm cần tra cứu: {khai_niem}"}
+            {"role": "user", "content": f"Khái niệm: {khai_niem}"}
         ],
         response_format={"type": "json_object"},
-        temperature=0.3
+        temperature=0.4
     )
     
-    content_string = response.choices[0].message.content
-    return json.loads(content_string)
-
+    return json.loads(response.choices[0].message.content)
 
 def goi_stability_sinh_anh(prompt_text: str, so_lan_thu_lai: int = 2) -> str:
     """
