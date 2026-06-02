@@ -3,6 +3,7 @@ import json
 import base64
 import requests
 import time
+import uuid
 from flask import Flask, render_template, request, session, redirect, url_for
 from openai import OpenAI
 from supabase import create_client, Client
@@ -32,9 +33,7 @@ STABILITY_API_KEY = os.environ.get("STABILITY_API_KEY")
 def goi_openai_xu_ly(khai_niem: str, user_level: str = "beginner") -> dict:
     """
     Hàm xử lý trí tuệ nhân tạo nâng cao áp dụng Prompt Taxonomy.
-    user_level: có thể truyền từ session hoặc database (beginner, intermediate, advanced)
     """
-    
     system_instruction = f"""
     You are an AI Educational Architect and Master Graphic Designer. Your job is to create a personalized teaching plan and design the perfect visual prompt for an image generation AI (Stable Diffusion 3).
 
@@ -75,7 +74,6 @@ def goi_openai_xu_ly(khai_niem: str, user_level: str = "beginner") -> dict:
     }}
     """
 
-    # Luồng gọi OpenAI Chat Completion giữ nguyên...
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -88,21 +86,20 @@ def goi_openai_xu_ly(khai_niem: str, user_level: str = "beginner") -> dict:
     
     return json.loads(response.choices[0].message.content)
 
+
 def goi_stability_sinh_anh(prompt_text: str, so_lan_thu_lai: int = 2) -> str:
     """
     Hàm gọi API Stability AI thế hệ mới (Mô hình Stable Diffusion 3 - SD3 Medium)
-    Tích hợp cơ chế tự động thử lại (Retry) bảo vệ hệ thống khỏi lỗi nghẽn mạng 504 Gateway Timeout.
     """
     if not STABILITY_API_KEY:
         print("Lỗi: Chưa cấu hình biến môi trường STABILITY_API_KEY trên Render!")
         return None
 
-    # Endpoint Core dịch vụ v2beta của Stability AI (Hỗ trợ SD3)
     url = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
     
     headers = {
         "Authorization": f"Bearer {STABILITY_API_KEY}",
-        "Accept": "application/json"  # Định dạng nhận Base64 trực tiếp qua JSON
+        "Accept": "application/json"
     }
     
     payload = {
@@ -115,7 +112,6 @@ def goi_stability_sinh_anh(prompt_text: str, so_lan_thu_lai: int = 2) -> str:
     for i in range(so_lan_thu_lai + 1):
         try:
             print(f"--> [Lần thử {i+1}] Đang gửi yêu cầu vẽ ảnh SD3 tới Stability AI...")
-            # Gửi dữ liệu theo dạng multipart/form-data chuẩn tài liệu Stability v2beta
             response = requests.post(url, headers=headers, files={"none": (None, "")}, data=payload, timeout=25)
             
             if response.status_code == 200:
@@ -145,181 +141,128 @@ def goi_stability_sinh_anh(prompt_text: str, so_lan_thu_lai: int = 2) -> str:
 # =====================================================================
 # TẦNG 3: ĐIỀU HƯỚNG & KIỂM SOÁT ỨNG DỤNG (CONTROLLER LAYER)
 # =====================================================================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        # Bạn có thể thay chuỗi ID mẫu này bằng cơ chế xác thực người dùng thực tế từ Supabase Auth
+        session['user_id'] = "41199175-edc1-4f28-afb5-645597e5a949" 
+        session['user_email'] = "user@example.com"
+        return redirect(url_for('home'))
+        
+    return render_template('login.html', error=None)
+
+
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home")
 def home():
     if 'user_id' not in session:
-        return redirect(url_for("login")) # Chuyển hướng an toàn, không lo sập BuildError
-        
-    try:
-        # Lấy thông tin người dùng từ Supabase
-        res = supabase.table("users").select("*").eq("id", session['user_id']).execute()
-        user_profile = {'role': 'free', 'credits_left': 0}
-        credits = 0
-        
-        if res.data and len(res.data) > 0:
-            user_profile = res.data[0]
-            credits = user_profile.get('credits_left', 0)
-
-        explanation = None
-        quiz = None
-        image_url = None
-        selected_concept = None
-
-        if request.method == 'POST':
-            selected_concept = request.form.get('concept', '').strip()
-            
-            if selected_concept:
-                if credits <= 0:
-                    explanation = "Bạn đã hết lượt tra cứu miễn phí. Vui lòng nâng cấp tài khoản!"
-                else:
-                    # BƯỚC 1: Gọi GPT-4o phân tích dữ liệu văn bản
-                    try:
-                        data_dict = goi_openai_xu_ly(selected_concept)
-                        # ĐÃ SỬA LỖI DÍNH DÒNG CHÍ MẠNG
-                        explanation = data_dict.get('vietnamese_explanation', '')
-                        dalle_prompt = data_dict.get('dalle_prompt', '')
-                    except Exception as ai_err:
-                        print(f"Lỗi hệ thống Core GPT-4o: {ai_err}")
-                        explanation = "Không thể kết nối với dịch vụ trí tuệ nhân tạo. Vui lòng thử lại!"
-                        dalle_prompt = None
-
-                    # BƯỚC 2: Gọi Stability AI SD3 sinh ảnh thông minh
-                    if dalle_prompt:
-                        image_url = goi_stability_sinh_anh(dalle_prompt)
-                        
-                        # Hàng rào bảo vệ: Nếu Stability sập, tự động cấp ảnh minh họa thay thế
-                        if not image_url:
-                            clean_keyword = selected_concept.lower().replace(' ', ',')
-                            image_url = f"https://image.pollinations.ai/p/{clean_keyword}?width=1024&height=1024&nologo=true"
-
-                    # BƯỚC 3: Lưu lịch sử vào Supabase và trừ Credits
-                    if explanation and ("Không thể kết nối" not in explanation) and ("hết lượt tra cứu" not in explanation):
-                        try:
-                            history_data = {
-                                "user_id": session['user_id'], 
-                                "concept": selected_concept,
-                                "explanation": explanation,
-                                "image_url": image_url
-                            }
-                            supabase.table("history").insert(history_data).execute()
-                        except Exception as db_err:
-                            print(f"Lỗi ghi lịch sử vào Supabase: {db_err}")
-
-                        quiz = f"Câu hỏi ôn tập nhanh cho khái niệm '{selected_concept}' đã sẵn sàng."
-                        new_credits = max(0, credits - 1)
-                        supabase.table("users").update({"credits_left": new_credits}).eq("id", session['user_id']).execute()
-                        
-                        credits = new_credits
-                        user_profile['credits_left'] = new_credits
-
-      # --- ĐOẠN CUỐI HÀM HOME TRONG APP.PY ---
-        
-        # Bổ sung: Lấy danh sách lịch sử tra cứu của user để hiển thị lên sidebar
-        history_res = supabase.table("history").select("*").eq("user_id", session['user_id']).order("created_at", desc=True).execute()
-        history_list = history_res.data if history_res.data else []
-
-        # Đổi selected_concept thành concept để trùng khớp với index.html của bạn
-        return render_template('index.html', 
-                               credits=credits, 
-                               user_profile=user_profile,
-                               explanation=explanation, 
-                               quiz=quiz, 
-                               image_url=image_url, 
-                               concept=selected_concept, # Đồng bộ tên biến tại đây
-                               history=history_list)     # Truyền dữ liệu lịch sử xuống template
-        
-    except Exception as e:
-        print(f"Lỗi hệ thống nghiêm trọng tại home: {e}")
-        fake_profile = {'role': 'free', 'credits_left': 0}
-        return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối dữ liệu.", quiz=None, image_url=None, concept=None, history=[])
-
-
-#==========================================
-# 🛠️ VÁ LỖI 2: ĐỊNH NGHĨA ENDPOINT LOGIN THIẾU
-# ==========================================
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        # Xử lý logic đăng nhập thương mại tại đây
-        # Ví dụ giả lập lưu session đăng nhập thành công:
-        session['user_id'] = "41199175-edc1-4f28-afb5-645597e5a949" # Chuỗi UUID của bạn
-        session['user_email'] = "user@example.com"
-        return redirect(url_for('home'))
-        
-    return render_template('login.html', error=None) # Đảm bảo file adf669ea chạy mượt
-
-
-@app.route('/', methods=['GET', 'POST'])
-def home():
-    # Kiểm tra bảo vệ phiên đăng nhập bảo mật
-    if 'user_id' not in session:
-        return redirect(url_for('login')) # Giờ đây lệnh này sẽ không bị sập nữa nhờ có định nghĩa trên
+        return redirect(url_for("login"))
         
     user_id = session['user_id']
     explanation = None
     quiz = None
     image_url = None
     concept = None
+    user_struggle_analysis = None
     history_list = []
 
-    # Khởi tạo thông tin hồ sơ mặc định đề phòng lỗi DB
+    # Khởi tạo thông tin hồ sơ mặc định đề phòng lỗi kết nối DB ban đầu
     user_profile = {'role': 'free', 'credits_left': 0}
-
+    credits = 0
+        
     try:
-        # ==========================================
-        # 🛠️ VÁ LỖI 1: XỬ LÝ AN TOÀN TRUY VẤN DATABASE (BIGINT VS UUID)
-        # ==========================================
-        # Hãy đảm bảo bảng "users" sử dụng khóa chính là chuỗi text/UUID trùng khớp với user_id
-        profile_res = supabase.table("users").select("*").eq("id", user_id).execute()
-        if profile_res.data:
-            user_profile = profile_res.data[0]
+        # Lấy thông tin người dùng từ Supabase
+        res = supabase.table("users").select("*").eq("id", user_id).execute()
+        if res.data and len(res.data) > 0:
+            user_profile = res.data[0]
+            credits = user_profile.get('credits_left', 0)
+
+        # Xử lý khi nhận yêu cầu tra cứu từ Form (POST)
+        if request.method == 'POST':
+            concept = request.form.get('concept', '').strip()
             
-        # Lấy lịch sử cẩn thận, bọc try để tránh lỗi 22P02 làm sập toàn bộ trang chủ
+            if concept:
+                if credits <= 0:
+                    explanation = "⚠️ Bạn đã hết lượt tra cứu miễn phí. Vui lòng nâng cấp tài khoản thương mại để tiếp tục tăng hiệu suất học tập!"
+                else:
+                    # BƯỚC 1: Gọi gpt-4o phân tích dữ liệu văn bản theo cấu trúc Prompt Taxonomy
+                    try:
+                        data_dict = goi_openai_xu_ly(concept)
+                        
+                        # Phân rã dữ liệu từ JSON trả về của OpenAI để truyền sang index.html
+                        user_struggle_analysis = data_dict.get('user_struggle_analysis', '')
+                        
+                        teaching_plan = data_dict.get('teaching_plan', {})
+                        # Tổ hợp lời giải thích sinh động bao gồm Analogy + Detailed Explanation
+                        analogy = teaching_plan.get('analogy', '')
+                        detailed = teaching_plan.get('detailed_explanation', '')
+                        
+                        explanation = f"### 💡 Ẩn dụ thực tế:\n{analogy}\n\n### 🔍 Phân tích chuyên sâu:\n{detailed}"
+                        quiz = teaching_plan.get('quiz', '')
+                        
+                        stability_prompt = data_dict.get('stability_prompt', '')
+                    except Exception as ai_err:
+                        print(f"❌ Lỗi hệ thống Core GPT-4o: {ai_err}")
+                        explanation = "Không thể kết nối với dịch vụ trí tuệ nhân tạo. Vui lòng thử lại!"
+                        stability_prompt = None
+
+                    # BƯỚC 2: Gọi Stability AI SD3 sinh ảnh thông minh
+                    if stability_prompt:
+                        image_url = goi_stability_sinh_anh(stability_prompt)
+                        
+                        # Hàng rào bảo vệ: Nếu Stability lỗi, tự động cấp ảnh dự phòng thay thế từ Pollinations
+                        if not image_url:
+                            clean_keyword = concept.lower().replace(' ', ',')
+                            image_url = f"https://image.pollinations.ai/p/{clean_keyword}?width=1024&height=1024&nologo=true"
+
+                    # BƯỚC 3: Lưu lịch sử vào Supabase và thực hiện trừ Lượt dùng (Credits)
+                    if explanation and ("Không thể kết nối" not in explanation) and ("hết lượt tra cứu" not in explanation):
+                        try:
+                            # Tự sinh UUID ngẫu nhiên dạng text cho cột ID phòng lỗi Bigint
+                            history_id = str(uuid.uuid4())
+                            history_data = {
+                                "id": history_id,
+                                "user_id": user_id, 
+                                "concept": concept,
+                                "explanation": explanation,
+                                "image_url": image_url
+                            }
+                            supabase.table("history").insert(history_data).execute()
+                        except Exception as db_err:
+                            print(f"⚠️ Cảnh báo lỗi cấu trúc lịch sử bảng history: {db_err}")
+
+                        # Tính toán và cập nhật lại số lượt dùng mới của người dùng
+                        new_credits = max(0, credits - 1)
+                        supabase.table("users").update({"credits_left": new_credits}).eq("id", user_id).execute()
+                        
+                        credits = new_credits
+                        user_profile['credits_left'] = new_credits
+
+        # Đồng bộ lấy danh sách lịch sử tra cứu của user để hiển thị lên sidebar giao diện
         try:
             history_res = supabase.table("history").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
             history_list = history_res.data if history_res.data else []
-        except Exception as db_err:
-            print(f"⚠️ Cảnh báo lỗi cấu trúc bảng History (Có thể lệch kiểu dữ liệu bigint): {db_err}")
-            history_list = [] # Trả về mảng rỗng để giao diện index.html không bị chết đứng
+        except Exception as history_err:
+            print(f"⚠️ Không thể tải danh mục lịch sử (Vui lòng kiểm tra lại kiểu dữ liệu cột id): {history_err}")
+            history_list = []
 
-        if request.method == 'POST':
-            concept = request.form.get('concept')
-            if concept:
-                # Giả lập hoặc gọi hàm sinh từ OpenAI/Stability tại đây
-                explanation = f"Mô hình khuếch tán kết hợp sức mạnh cho {concept}..."
-                quiz = "Câu hỏi ôn tập năng lực chuyên sâu..."
-                image_url = "https://via.placeholder.com/500" # Link ảnh thực tế từ Stability AI
-                
-                # Sau khi xử lý xong, lưu thông tin vào lịch sử
-                try:
-                    supabase.table("history").insert({
-                        "user_id": user_id, # Đảm bảo trường này trong DB nhận kiểu dữ liệu Text/UUID
-                        "concept": concept,
-                        "explanation": explanation
-                    }).execute()
-                except Exception as insert_err:
-                    print(f"❌ Không thể ghi lịch sử do lỗi kiểu dữ liệu: {insert_err}")
-
+        # Trả toàn bộ dữ liệu sạch về file index.html để hiển thị đồng bộ cấu trúc Tailwind
         return render_template('index.html', 
-                               credits=user_profile.get('credits_left', 0), 
+                               credits=credits, 
                                user_profile=user_profile,
                                explanation=explanation, 
                                quiz=quiz, 
                                image_url=image_url, 
                                concept=concept, 
+                               user_struggle_analysis=user_struggle_analysis,
                                history=history_list)
-
+        
     except Exception as e:
         print(f"❌ Lỗi hệ thống nghiêm trọng tại home: {e}")
-        return render_template('index.html', 
-                               credits=0, 
-                               user_profile=user_profile, 
-                               explanation="Hệ thống lõi đang được hiệu chỉnh nâng cấp.", 
-                               quiz=None, 
-                               image_url=None, 
-                               concept=concept, 
-                               history=[])
+        fake_profile = {'role': 'free', 'credits_left': 0}
+        return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối dữ liệu.", quiz=None, image_url=None, concept=concept, history=[])
+
 
 @app.route("/logout")
 def logout():
