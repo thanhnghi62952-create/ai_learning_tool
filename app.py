@@ -151,7 +151,40 @@ def login():
         return redirect(url_for('home'))
         
     return render_template('login.html', error=None)
-
+    
+def upload_anh_len_supabase(base64_string: str, file_name: str) -> str:
+    """
+    Chuyển đổi chuỗi hình ảnh Base64 thành file bytes và upload lên Supabase Storage.
+    Trả về: Đường dẫn URL công khai (Public URL) của bức ảnh.
+    """
+    try:
+        # 1. Xử lý tiền dữ liệu chuỗi Base64 (loại bỏ phần header nếu có)
+        if "base64," in base64_string:
+            base64_string = base64_string.split("base64,")[1]
+            
+        # 2. Giải mã chuỗi Base64 thành dữ liệu nhị phân (Bytes)
+        image_bytes = base64.b64decode(base64_string)
+        
+        # 3. Định nghĩa đường dẫn file trong Bucket (ví dụ: đặt trong thư mục generated/)
+        storage_path = f"generated/{file_name}.png"
+        
+        # 4. Thực hiện lệnh upload file lên bucket 'concept-images'
+        # Cần chỉ định đúng 'content_type' để trình duyệt hiểu đây là file ảnh khi truy cập URL
+        supabase.storage.from_("concept-images").upload(
+            path=storage_path,
+            file=image_bytes,
+            file_options={"content-type": "image/png"}
+        )
+        
+        # 5. Lấy đường dẫn URL công khai (Public URL) từ Supabase Storage
+        url_res = supabase.storage.from_("concept-images").get_public_url(storage_path)
+        
+        print(f"--> Upload ảnh lên Storage thành công! URL: {url_res}")
+        return url_res
+        
+    except Exception as e:
+        print(f"❌ Trục trặc trong quá trình upload ảnh lên Supabase Storage: {e}")
+        return None
 
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home")
@@ -207,11 +240,18 @@ def home():
                         explanation = "Không thể kết nối với dịch vụ trí tuệ nhân tạo. Vui lòng thử lại!"
                         stability_prompt = None
 
-                    # BƯỚC 2: Gọi Stability AI SD3 sinh ảnh thông minh
+                   # BƯỚC 2: Gọi Stability AI SD3 sinh ảnh thông minh
                     if stability_prompt:
-                        image_url = goi_stability_sinh_anh(stability_prompt)
+                        base64_image = goi_stability_sinh_anh(stability_prompt)
                         
-                        # Hàng rào bảo vệ: Nếu Stability lỗi, tự động cấp ảnh dự phòng thay thế từ Pollinations
+                        if base64_image:
+                            # Tạo tên file duy nhất bằng UUID để tránh trùng lặp file trên Storage
+                            unique_filename = f"{user_id}_{int(time.time())}"
+                            
+                            # Tiến hành upload và lấy Public URL thay thế cho chuỗi Base64 cũ
+                            image_url = upload_anh_len_supabase(base64_image, unique_filename)
+                        
+                        # Hàng rào bảo vệ: Nếu Stability hoặc Storage lỗi, dùng ảnh dự phòng từ Pollinations
                         if not image_url:
                             clean_keyword = concept.lower().replace(' ', ',')
                             image_url = f"https://image.pollinations.ai/p/{clean_keyword}?width=1024&height=1024&nologo=true"
@@ -219,14 +259,13 @@ def home():
                     # BƯỚC 3: Lưu lịch sử vào Supabase và thực hiện trừ Lượt dùng (Credits)
                     if explanation and ("Không thể kết nối" not in explanation) and ("hết lượt tra cứu" not in explanation):
                         try:
-                            # Tự sinh UUID ngẫu nhiên dạng text cho cột ID phòng lỗi Bigint
                             history_id = str(uuid.uuid4())
                             history_data = {
                                 "id": history_id,
                                 "user_id": user_id, 
                                 "concept": concept,
                                 "explanation": explanation,
-                                "image_url": image_url
+                                "image_url": image_url # Lúc này image_url đã là link ngắn: https://xxx.supabase.co/storage/...
                             }
                             supabase.table("history").insert(history_data).execute()
                         except Exception as db_err:
