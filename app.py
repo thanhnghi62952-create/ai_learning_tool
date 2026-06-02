@@ -213,19 +213,26 @@ def home():
                         credits = new_credits
                         user_profile['credits_left'] = new_credits
 
+      # --- ĐOẠN CUỐI HÀM HOME TRONG APP.PY ---
+        
+        # Bổ sung: Lấy danh sách lịch sử tra cứu của user để hiển thị lên sidebar
+        history_res = supabase.table("history").select("*").eq("user_id", session['user_id']).order("created_at", desc=True).execute()
+        history_list = history_res.data if history_res.data else []
+
+        # Đổi selected_concept thành concept để trùng khớp với index.html của bạn
         return render_template('index.html', 
                                credits=credits, 
                                user_profile=user_profile,
                                explanation=explanation, 
                                quiz=quiz, 
                                image_url=image_url, 
-                               selected_concept=selected_concept)
+                               concept=selected_concept, # Đồng bộ tên biến tại đây
+                               history=history_list)     # Truyền dữ liệu lịch sử xuống template
         
     except Exception as e:
         print(f"Lỗi hệ thống nghiêm trọng tại home: {e}")
         fake_profile = {'role': 'free', 'credits_left': 0}
-        return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối dữ liệu.", quiz=None, image_url=None)
-
+        return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối dữ liệu.", quiz=None, image_url=None, concept=None, history=[])
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
