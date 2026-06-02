@@ -235,7 +235,7 @@ def home():
         return render_template('index.html', credits=0, user_profile=fake_profile, explanation="Hệ thống đang gặp sự cố kết nối dữ liệu.", quiz=None, image_url=None, concept=None, history=[])
 
 
-==========================================
+#==========================================
 # 🛠️ VÁ LỖI 2: ĐỊNH NGHĨA ENDPOINT LOGIN THIẾU
 # ==========================================
 @app.route('/login', methods=['GET', 'POST'])
